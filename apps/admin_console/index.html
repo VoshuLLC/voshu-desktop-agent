@@ -233,9 +233,151 @@
                 opacity: 0;
             }
         }
+        /* ========== VOSHU workspace shell + fleet view (Artemis tokens) ========== */
+        #viewnav{width:52px;flex:none;background:#fff;border-right:1px solid #e0e6ed;display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:6px;z-index:20}
+        #viewnav .vmark{width:32px;height:32px;border-radius:8px;background:#3182ce;display:grid;place-items:center;font-weight:800;font-size:15px;color:#fff;margin-bottom:8px;box-shadow:0 2px 6px rgba(49,130,206,.35)}
+        #viewnav .vtab{width:38px;height:38px;border-radius:6px;display:grid;place-items:center;color:#718096;font-size:15px;cursor:pointer;border:1px solid transparent;transition:.15s;background:none}
+        #viewnav .vtab:hover{color:#2d3748;border-color:#e2e8f0;background:#f7fafc}
+        #viewnav .vtab.on{color:#3182ce;background:rgba(49,130,206,.12);border-color:rgba(49,130,206,.35)}
+        #viewnav .vtab span{font-size:9px}
+        #viewnav .vlabel{writing-mode:vertical-rl;transform:rotate(180deg);color:#a0aec0;font-size:9px;letter-spacing:.2em;margin-top:auto;padding-top:8px}
+        #view-sessions{display:flex;flex:1;min-width:0;min-height:0}
+        #view-fleet{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:#f9fafc;color:#333;font-size:14px}
+        #view-fleet button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+        #view-fleet input{font:inherit;color:#2d3748;background:#fff;border:1px solid #cbd5e0;border-radius:4px;padding:8px 10px;outline:none}
+        #view-fleet input:focus{border-color:#3182ce;box-shadow:0 0 0 2px rgba(49,130,206,.2)}
+        #fl-top{height:54px;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid #e0e6ed;background:#fff;flex:none}
+        #fl-top .fl-brand{font-weight:700;letter-spacing:.1em;font-size:13px;color:#2d3748}
+        #fl-top .fl-brand b{color:#3182ce}
+        #fl-top .fl-sub{color:#718096;font-size:11px}
+        .fl-grow{flex:1}
+        .fl-chip{font-size:11px;padding:3px 10px;border-radius:99px;border:1px solid #e2e8f0;color:#718096;background:#fff}
+        .fl-chip b{color:#2d3748;font-weight:600}
+        .fl-btn{background:#3182ce;color:#fff;border-radius:4px;padding:7px 14px;font-weight:bold;font-size:12px;transition:.15s}
+        .fl-btn:hover{background:#2b6cb0;box-shadow:0 2px 8px rgba(49,130,206,.3)}
+        .fl-btn.ghost{background:#fff;border:1px solid #cbd5e0;color:#4a5568}
+        .fl-btn.ghost:hover{border-color:#3182ce;color:#3182ce;box-shadow:none}
+        .fl-btn.danger{background:#e53e3e}.fl-btn.danger:hover{background:#c53030}
+        .fl-btn.sm{padding:4px 10px;font-size:11px;border-radius:4px}
+        .fl-btn:disabled{opacity:.45;cursor:default;box-shadow:none}
+        #fl-main{flex:1;display:flex;min-height:0;position:relative}
+        #fl-wall{flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(225px,1fr));gap:14px;align-content:start}
+        #fl-wall::-webkit-scrollbar{width:8px}#fl-wall::-webkit-scrollbar-thumb{background:#cbd5e0;border-radius:4px}
+        .fl-dev{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;transition:.2s;cursor:pointer;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+        .fl-dev:hover{border-color:#cbd5e0;box-shadow:0 4px 10px rgba(0,0,0,.08);transform:translateY(-2px)}
+        .fl-dev.busy{border-color:#3182ce;box-shadow:0 0 0 3px rgba(49,130,206,.15)}
+        .fl-dev.free{border-color:#9ae6b4}
+        .fl-dev.dead{border-color:#feb2b2;opacity:.75}
+        .fl-dev.booting{border-color:#fbd38d}
+        .fl-dev.selected{outline:2px solid #3182ce;outline-offset:2px}
+        .fl-dev .selbox{position:absolute;top:8px;left:8px;width:18px;height:18px;border-radius:4px;border:1.5px solid #a0aec0;background:rgba(255,255,255,.9);z-index:3;display:none;place-items:center;font-size:12px;color:#fff}
+        .fl-dev .selbox.on{display:grid;background:#3182ce;border-color:#3182ce}
+        body.select-mode .fl-dev .selbox{display:grid}
+        .fl-dhead{display:flex;align-items:center;gap:8px;padding:9px 11px}
+        .fl-dhead .nm{font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#2d3748}
+        .fl-st{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:99px}
+        .fl-st.free{background:#c6f6d5;color:#276749;border:1px solid #9ae6b4}
+        .fl-st.busy{background:#bee3f8;color:#2b6cb0;border:1px solid #90cdf4}
+        .fl-st.booting{background:#feebc8;color:#b7791f;border:1px solid #fbd38d;animation:flpulse 1.4s ease-in-out infinite}
+        .fl-st.dead{background:#fed7d7;color:#c53030;border:1px solid #feb2b2}
+        .fl-st.offline{background:#e2e8f0;color:#718096;border:1px solid #cbd5e0}
+        @keyframes flpulse{50%{opacity:.5}}
+        .fl-screen{position:relative;aspect-ratio:9/19;background:#1a202c;display:grid;place-items:center;overflow:hidden}
+        .fl-screen img{width:100%;height:100%;object-fit:contain;display:block}
+        .fl-screen .ph{position:absolute;inset:0;display:grid;place-items:center;color:#a0aec0;font-size:12px;text-align:center;padding:12px}
+        .fl-dfoot{padding:8px 11px;display:flex;flex-direction:column;gap:4px;border-top:1px solid #edf2f7}
+        .fl-dser{font-size:10px;color:#a0aec0;font-family:ui-monospace,Menlo,monospace}
+        .fl-dtask{font-size:11px;color:#3182ce;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:14px}
+        #fl-detail{width:0;overflow:hidden;border-left:1px solid #e0e6ed;background:#fff;transition:width .25s ease;display:flex;flex:none}
+        #fl-detail.open{width:600px}
+        .fl-dwrap{display:flex;width:600px;min-width:600px;height:100%}
+        .fl-dleft{width:280px;flex:none;display:flex;flex-direction:column;padding:12px;gap:8px;border-right:1px solid #edf2f7;background:#f9fafc}
+        .fl-dlive{position:relative;flex:1;background:#1a202c;border-radius:14px;border:2px solid #cbd5e0;overflow:hidden;min-height:0;touch-action:none;cursor:crosshair}
+        .fl-dlive img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;user-select:none}
+        .fl-dlive .tapring{position:absolute;width:22px;height:22px;border:2px solid #63b3ed;border-radius:50%;transform:translate(-50%,-50%);animation:fltapring .5s ease-out forwards;pointer-events:none}
+        @keyframes fltapring{to{width:6px;height:6px;opacity:0}}
+        .fl-dright{flex:1;display:flex;flex-direction:column;padding:12px;gap:10px;min-width:0;overflow-y:auto}
+        .fl-dtitle{display:flex;align-items:center;gap:10px}
+        .fl-dtitle h2{font-size:15px;font-weight:700;margin:0;color:#2d3748}
+        .fl-x{margin-left:auto;color:#a0aec0;font-size:16px;padding:4px 8px;border-radius:6px}
+        .fl-x:hover{background:#edf2f7;color:#2d3748}
+        .fl-kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11px}
+        .fl-kv .k{color:#a0aec0}
+        .fl-kv .v{font-family:ui-monospace,Menlo,monospace;word-break:break-all;color:#4a5568}
+        .fl-sect{font-size:9px;font-weight:700;letter-spacing:.12em;color:#a0aec0;text-transform:uppercase;margin-top:4px}
+        .fl-goalrow{display:flex;gap:8px}
+        .fl-goalrow input{flex:1}
+        .fl-keys{display:flex;gap:6px;flex-wrap:wrap}
+        .fl-log{background:#0f172a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;font:11px/1.5 ui-monospace,Menlo,monospace;color:#9db2cc;height:130px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+        .fl-log .e{color:#fc8181}
+        .fl-log .p{color:#63b3ed}
+        #fl-empty{grid-column:1/-1;text-align:center;padding:80px 20px;color:#a0aec0}
+        #fl-empty .big{font-size:42px;margin-bottom:12px;opacity:.5}
+        #fl-delegate{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(255,255,255,.97);border-top:1px solid #e2e8f0;backdrop-filter:blur(8px);transform:translateY(100%);transition:transform .2s ease;z-index:5;box-shadow:0 -4px 12px rgba(0,0,0,.06)}
+        #fl-delegate.show{transform:translateY(0)}
+        #fl-delegate input{flex:1}
+        #fl-delegate .cnt{font-size:11px;color:#718096;white-space:nowrap}
+        #fl-toasts{position:fixed;bottom:16px;right:16px;display:flex;flex-direction:column;gap:8px;z-index:60}
+        .fl-toast{background:#fff;border:1px solid #e2e8f0;border-left:3px solid #3182ce;border-radius:6px;padding:10px 14px;font-size:12px;max-width:340px;box-shadow:0 8px 24px rgba(0,0,0,.12);animation:fltin .2s ease;color:#2d3748}
+        .fl-toast.err{border-left-color:#e53e3e}
+        @keyframes fltin{from{transform:translateX(20px);opacity:0}}
     </style>
 </head>
 <body>
+    <div id="viewnav">
+        <div class="vmark">V</div>
+        <button class="vtab on" id="vtab-fleet" title="Fleet — device wall">📱</button>
+        <button class="vtab" id="vtab-sessions" title="Sessions — task inspector">📋</button>
+        <div class="vlabel">VOSHU DEVICE CONTROL</div>
+    </div>
+    <div id="view-fleet">
+        <div id="fl-top">
+            <div>
+                <div class="fl-brand">ARTEMIS <b>FLEET</b></div>
+                <div class="fl-sub">golden-image clones · live control · multi-device dispatch</div>
+            </div>
+            <div class="fl-grow"></div>
+            <span class="fl-chip" id="fl-c-total">0 devices</span>
+            <span class="fl-chip" id="fl-c-free">0 free</span>
+            <span class="fl-chip" id="fl-c-busy">0 busy</span>
+            <span class="fl-chip" id="fl-c-gold">golden —</span>
+            <button class="fl-btn ghost sm" id="fl-b-sel" title="Multi-select for delegation">☑ Select</button>
+            <button class="fl-btn ghost sm" id="fl-b-sync" title="Re-scan adb">⟳</button>
+            <button class="fl-btn sm" id="fl-b-prov1">+ Device</button>
+            <button class="fl-btn sm" id="fl-b-prov3">+ 3</button>
+        </div>
+        <div id="fl-main">
+            <div id="fl-wall"></div>
+            <div id="fl-detail">
+                <div class="fl-dwrap">
+                    <div class="fl-dleft">
+                        <div class="fl-dlive" id="fl-dlive"><img id="fl-dlive-img" alt=""></div>
+                        <div style="font-size:10px;color:#a0aec0;text-align:center">click = tap · drag = swipe</div>
+                    </div>
+                    <div class="fl-dright">
+                        <div class="fl-dtitle"><h2 id="fl-d-name">device</h2><span class="fl-st" id="fl-d-st">—</span><button class="fl-x" id="fl-d-close">✕</button></div>
+                        <div class="fl-kv" id="fl-d-kv"></div>
+                        <div class="fl-sect">Run a task</div>
+                        <div class="fl-goalrow"><input id="fl-d-goal" placeholder="Open Chrome and search…"><button class="fl-btn sm" id="fl-d-run">Run</button></div>
+                        <div class="fl-sect">Keys</div>
+                        <div class="fl-keys" id="fl-d-keys"></div>
+                        <div class="fl-sect">ADB shell</div>
+                        <div class="fl-goalrow"><input id="fl-d-cmd" placeholder="pm list packages"><button class="fl-btn ghost sm" id="fl-d-sh">▶</button></div>
+                        <div class="fl-log" id="fl-d-log"></div>
+                        <div class="fl-sect">Danger zone</div>
+                        <div style="display:flex;gap:8px"><button class="fl-btn ghost sm" id="fl-d-reboot">Reboot</button><button class="fl-btn danger sm" id="fl-d-del">Destroy clone</button></div>
+                    </div>
+                </div>
+            </div>
+            <div id="fl-delegate">
+                <span class="cnt" id="fl-del-cnt">0 selected</span>
+                <input id="fl-del-goal" placeholder="Goal to run on every selected device…">
+                <button class="fl-btn sm" id="fl-del-run">Dispatch</button>
+                <button class="fl-btn ghost sm" id="fl-del-clear">Clear</button>
+            </div>
+        </div>
+    </div>
+    <div id="view-sessions">
     <div id="sidebar">
         <h2>Run Task</h2>
         <div style="margin-bottom: 20px;">
@@ -327,6 +469,8 @@
             </div>
         </div>
     </div>
+    </div><!-- /view-sessions -->
+    <div id="fl-toasts"></div>
 
     <!-- Task Plan Modal -->
     <div id="plan-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(15, 23, 42, 0.65); backdrop-filter: blur(8px); z-index: 9999; justify-content: center; align-items: center;">
@@ -3782,6 +3926,152 @@
                 });
             }
         });
+    </script>
+    <script>
+    /* ================= VOSHU FLEET WORKSPACE ================= */
+    (function(){
+      const F$ = s => document.querySelector(s);
+      const fleet = { devices: [], golden: null, selected: null, selMode: false, chosen: new Set() };
+
+      function switchView(v){
+        F$('#view-fleet').style.display = v==='fleet' ? 'flex' : 'none';
+        F$('#view-sessions').style.display = v==='sessions' ? 'flex' : 'none';
+        F$('#vtab-fleet').classList.toggle('on', v==='fleet');
+        F$('#vtab-sessions').classList.toggle('on', v==='sessions');
+      }
+      F$('#vtab-fleet').onclick = ()=>switchView('fleet');
+      F$('#vtab-sessions').onclick = ()=>switchView('sessions');
+      switchView('fleet');
+
+      async function fapi(path, opts, method){
+        const r = await fetch(path, opts ? {method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(opts)} : (method?{method}:{}) );
+        if (!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail || r.statusText);
+        return r.json().catch(()=>({}));
+      }
+      function ftoast(msg, err){ const t=document.createElement('div');t.className='fl-toast'+(err?' err':'');t.textContent=msg;F$('#fl-toasts').appendChild(t);setTimeout(()=>t.remove(),4500); }
+      function fesc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+      function renderFleet(){
+        const w = F$('#fl-wall'); const devs = fleet.devices;
+        F$('#fl-c-total').innerHTML = `<b>${devs.length}</b> devices`;
+        const cnt = s => devs.filter(d=>d.status===s).length;
+        F$('#fl-c-free').innerHTML = `<b>${cnt('free')}</b> free`;
+        F$('#fl-c-busy').innerHTML = `<b>${cnt('busy')}</b> busy`;
+        F$('#fl-c-gold').textContent = `golden ${fleet.golden?.avd||'—'} · ${fleet.golden?.rev||'no baseline'}`;
+        if (!devs.length){ w.innerHTML = `<div id="fl-empty"><div class="big">▚▞</div><h3>No devices</h3><p>Provision a clone from the golden image to start the farm.</p></div>`; return; }
+        w.innerHTML = devs.map(d=>`
+          <div class="fl-dev ${d.status}${fleet.chosen.has(d.id)?' selected':''}" data-id="${d.id}">
+            <div class="selbox${fleet.chosen.has(d.id)?' on':''}">✓</div>
+            <div class="fl-dhead"><span class="nm">${fesc(d.name)}</span><span class="fl-st ${d.status}">${d.status}</span></div>
+            <div class="fl-screen">
+              ${d.status==='dead'||d.status==='offline' ? `<div class="ph">${d.status==='dead'?'✕ device down':'○ offline'}<br><span style="font-size:10px">${fesc(d.serial)}</span></div>` : `<img src="/api/fleet/devices/${d.id}/stream" loading="lazy">`}
+            </div>
+            <div class="fl-dfoot">
+              <div class="fl-dser">${fesc(d.serial)} · ${d.kind}</div>
+              <div class="fl-dtask">${d.task?('▸ '+fesc(d.task)):''}</div>
+            </div>
+          </div>`).join('');
+        w.querySelectorAll('.fl-dev').forEach(el=>el.onclick=()=>{
+          const id = el.dataset.id;
+          if (fleet.selMode){ fleet.chosen.has(id)?fleet.chosen.delete(id):fleet.chosen.add(id); renderFleet(); return; }
+          openDetail(id);
+        });
+        paintDelegate();
+        if (fleet.selected) paintDetail(fleet.devices.find(d=>d.id===fleet.selected.id));
+      }
+
+      function paintDelegate(){
+        const n = fleet.chosen.size;
+        F$('#fl-delegate').classList.toggle('show', fleet.selMode && n>0);
+        F$('#fl-del-cnt').textContent = `${n} selected`;
+      }
+      F$('#fl-b-sel').onclick = ()=>{ fleet.selMode=!fleet.selMode; fleet.chosen.clear(); document.body.classList.toggle('select-mode',fleet.selMode); F$('#fl-b-sel').classList.toggle('ghost',!fleet.selMode); renderFleet(); };
+      F$('#fl-del-clear').onclick = ()=>{ fleet.chosen.clear(); renderFleet(); };
+      F$('#fl-del-run').onclick = async ()=>{
+        const g = F$('#fl-del-goal').value.trim(); if(!g||!fleet.chosen.size)return;
+        const ids=[...fleet.chosen]; let ok=0;
+        for (const id of ids){
+          try{ await fapi(`/api/fleet/devices/${id}/run`,{goal:g}); ok++; }catch(e){ ftoast(`${id}: ${e.message}`,true) }
+        }
+        ftoast(`dispatched "${g.slice(0,40)}" to ${ok}/${ids.length} devices`);
+        fleet.chosen.clear(); F$('#fl-del-goal').value=''; renderFleet();
+      };
+
+      function openDetail(id){
+        const d = fleet.devices.find(x=>x.id===id); if(!d) return;
+        fleet.selected = d; F$('#fl-detail').classList.add('open'); paintDetail(d);
+      }
+      function paintDetail(d){
+        if(!d) return;
+        F$('#fl-d-name').textContent = d.name;
+        const st=F$('#fl-d-st'); st.className='fl-st '+d.status; st.textContent=d.status;
+        F$('#fl-d-kv').innerHTML = `
+          <span class="k">serial</span><span class="v">${fesc(d.serial)}</span>
+          <span class="k">kind</span><span class="v">${d.kind}${d.avd_name?' · '+fesc(d.avd_name):''}</span>
+          <span class="k">golden</span><span class="v">${fesc(d.golden_rev||'—')}</span>
+          <span class="k">task</span><span class="v">${fesc(d.task||'—')}</span>
+          <span class="k">session</span><span class="v">${fesc(d.session_id||'—')}</span>`;
+        const img=F$('#fl-dlive-img');
+        const src=`/api/fleet/devices/${d.id}/stream`;
+        if (img.dataset.src!==src){ img.dataset.src=src; img.src=src; }
+        F$('#fl-d-del').style.display = d.kind==='avd' ? '' : 'none';
+        F$('#fl-d-reboot').style.display = d.kind==='avd' ? '' : 'none';
+      }
+      F$('#fl-d-close').onclick=()=>{ fleet.selected=null; F$('#fl-detail').classList.remove('open'); };
+
+      (function(){
+        const el=F$('#fl-dlive'); let sx=0,sy=0,drag=false;
+        const toNorm=e=>{const r=el.getBoundingClientRect();return[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height]};
+        el.addEventListener('pointerdown',e=>{drag=true;[sx,sy]=toNorm(e);el.setPointerCapture(e.pointerId)});
+        el.addEventListener('pointerup',async e=>{
+          if(!drag||!fleet.selected)return; drag=false;
+          const[ex,ey]=toNorm(e);
+          const ring=document.createElement('div');ring.className='tapring';
+          ring.style.left=(ex*100)+'%';ring.style.top=(ey*100)+'%';el.appendChild(ring);setTimeout(()=>ring.remove(),600);
+          const dist=Math.hypot(ex-sx,ey-sy);
+          try{
+            if(dist<0.03){ await fapi(`/api/fleet/devices/${fleet.selected.id}/input`,{cx:ex,cy:ey}); }
+            else { await fapi(`/api/fleet/devices/${fleet.selected.id}/input`,{cx:sx,cy:sy,cx2:ex,cy2:ey,duration_ms:Math.min(1200,Math.max(200,dist*1600))}); }
+          }catch(err){ftoast('input failed: '+err.message,true)}
+        });
+      })();
+
+      ['BACK','HOME','APP_SWITCH','ENTER','POWER'].forEach(k=>{
+        const b=document.createElement('button');b.className='fl-btn ghost sm';b.textContent=k==='APP_SWITCH'?'RECENTS':k;
+        b.onclick=async()=>{try{await fapi(`/api/fleet/devices/${fleet.selected.id}/key`,{key:k});flog(`key ${k}`)}catch(e){ftoast(e.message,true)}};
+        F$('#fl-d-keys').appendChild(b);
+      });
+      function flog(m,cls){const l=F$('#fl-d-log');const s=document.createElement('div');if(cls)s.className=cls;s.textContent=m;l.appendChild(s);l.scrollTop=l.scrollHeight;}
+
+      F$('#fl-d-run').onclick=async()=>{
+        const g=F$('#fl-d-goal').value.trim(); if(!g||!fleet.selected)return;
+        try{ flog('▶ '+g,'p'); const r=await fapi(`/api/fleet/devices/${fleet.selected.id}/run`,{goal:g}); flog('queued '+(r.tasks?.[0]?.session_id||'').slice(0,8)); F$('#fl-d-goal').value=''; }
+        catch(e){flog('run failed: '+e.message,'e')}
+      };
+      F$('#fl-d-sh').onclick=async()=>{
+        const c=F$('#fl-d-cmd').value.trim(); if(!c||!fleet.selected)return;
+        try{ flog('$ '+c,'p'); const r=await fapi(`/api/fleet/devices/${fleet.selected.id}/shell`,{cmd:c}); if(r.out)flog(r.out); if(r.err)flog(r.err,'e'); F$('#fl-d-cmd').value=''; }
+        catch(e){flog('shell failed: '+e.message,'e')}
+      };
+      F$('#fl-d-cmd').addEventListener('keydown',e=>{if(e.key==='Enter')F$('#fl-d-sh').click()});
+      F$('#fl-d-goal').addEventListener('keydown',e=>{if(e.key==='Enter')F$('#fl-d-run').click()});
+      F$('#fl-d-reboot').onclick=async()=>{try{ftoast('rebooting '+fleet.selected.id);await fapi(`/api/fleet/devices/${fleet.selected.id}/reboot`,{})}catch(e){ftoast(e.message,true)}};
+      F$('#fl-d-del').onclick=async()=>{
+        const d=fleet.selected; if(!confirm(`Destroy ${d.id}? The clone is deleted; the golden image is untouched.`))return;
+        try{ const r=await fetch(`/api/fleet/devices/${d.id}`,{method:'DELETE'}); if(r.ok){ftoast('destroyed '+d.id);F$('#fl-d-close').click()}else ftoast('destroy failed',true)}catch(e){ftoast(e.message,true)}
+      };
+
+      async function prov(n){try{ftoast('provisioning '+n+' device'+(n>1?'s':'')+' — cloning golden…');const r=await fapi('/api/fleet/provision',{count:n});(r.results||[]).forEach(x=>ftoast(x.ok?`${x.id} online @ ${x.serial}`:`${x.id||'clone'} failed: ${x.error}`,!x.ok));if(r.created_golden)ftoast('golden baseline created');}catch(e){ftoast(e.message,true)}refreshFleet()}
+      F$('#fl-b-prov1').onclick=()=>prov(1);F$('#fl-b-prov3').onclick=()=>prov(3);
+      F$('#fl-b-sync').onclick=refreshFleet;
+
+      async function refreshFleet(){
+        try{ const d=await fapi('/api/fleet/devices'); fleet.devices=d.devices; fleet.golden=d.golden; renderFleet(); }
+        catch(e){}
+      }
+      refreshFleet();
+      setInterval(()=>{ if(F$('#view-fleet').style.display!=='none') refreshFleet(); },2500);
+    })();
     </script>
 </body>
 </html>

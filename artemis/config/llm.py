@@ -162,6 +162,11 @@ def _expand_default_into_nodes(config_dict: dict) -> dict:
         "history_analyzer_expert",
         "diagnoser_expert",
         "explorer",
+        # Judge nodes inherit `default` (and become "nodes"-overridable) so a
+        # non-Google deployment never detours them to Gemini via the
+        # `lightweight_judge_default` fallback in `get_agent`.
+        "validator_pixel_safety_net",
+        "planner_validation",
     ]
 
     all_utils_nodes = [

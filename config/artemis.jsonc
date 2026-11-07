@@ -7,12 +7,12 @@
   // 1. Global Default Model (Applied to all sub-agents unless overridden below)
   // ------------------------------------------------------------------------------
   "default": {
-    "provider": "google",
-    "model": "gemini-3.8-flash",
+    "provider": "custom",
+    "model": "agent/planner",
     "thinking_level": "medium",
     "fallback": {
-      "provider": "google",
-      "model": "gemini-3.7-flash",
+      "provider": "custom",
+      "model": "agent/agy-flash",
       "thinking_level": "medium"
     }
   },
@@ -35,6 +35,11 @@
       "provider": "openai",
       "model": "gpt-4o",
       "fallback": { "provider": "openai", "model": "gpt-4o-mini" }
+    },
+    "voshu-router": {
+      "provider": "custom",
+      "model": "agent/planner",
+      "fallback": { "provider": "custom", "model": "agent/agy-flash" }
     },
     "cost-saving": {
       "provider": "google",
@@ -68,18 +73,38 @@
     //  - Native Gemini Files API for Gemini models with Google API keys (long video file stream);
     //    Gemini 3.6+ Flash sub-agents use agentic video understanding by default (see video_analyzer.processing below)
     //  - Universal Multi-Model Engine for Claude 3.5/3.7, GPT-4o, OpenRouter, Vertex AI (dynamic keyframe extraction + multimodal tool calling)
-    "video_analyzer": {},
+    "video_analyzer": {
+      "provider": "custom",
+      "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "fallback": { "provider": "custom", "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit" }
+    },
 
     // 👁️ Object Detector & Explorer (Flash Mode): Visual coordinates grounding and bounding boxes
-    // CRITICAL REQUIREMENT: Standard LLMs (including standard Gemini Flash, GPT-4o, Claude 3.7) lack sub-pixel spatial coordinate fine-tuning.
-    // To achieve accurate [x, y] point and bounding box localization, this node MUST use specialized Gemini ER (Embodied Reasoning / Robotics) models:
-    // e.g., "gemini-robotics-er-2-preview". Non-ER models will fail spatial coordinate detection.
+    // VOSHU: routed through the Router's flash lane. Upstream recommends Gemini ER
+    // models for sub-pixel grounding; none exist in the router catalog, so this is
+    // a deliberate degrade — the UI-hierarchy helper carries element targeting and
+    // coordinate detection is the fallback path, not the primary one.
     "object_detector": {
-      "model": "gemini-robotics-er-2-preview",
+      "provider": "custom",
+      "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit",
       "fallback": {
-        "provider": "google",
-        "model": "gemini-robotics-er-2-preview"
+        "provider": "custom",
+        "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit"
       }
+    },
+
+    // 🩹 Pre-execution pixel safety net + planner validation judges.
+    // VOSHU: the pixel net sees crops -> vision lane (llama-90b-vision verified
+    // 2026-11-07); planner validation is text-only -> cheap flash lane.
+    "validator_pixel_safety_net": {
+      "provider": "custom",
+      "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "fallback": { "provider": "custom", "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit" }
+    },
+    "planner_validation": {
+      "provider": "custom",
+      "model": "agent/agy-flash",
+      "fallback": { "provider": "custom", "model": "agent/agy-flash" }
     },
 
     // 🔍 Explorer: Deep element grounding and multi-candidate visual search
@@ -87,6 +112,9 @@
     //  - "flash" version delegates directly to object_detector (requires Gemini ER model above).
     //  - "pro" / "ultra" versions run multi-turn ReAct loops (supports both Native Gemini and Universal Multi-Model LangChain engines).
     "explorer": {
+      "provider": "custom",
+      "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "fallback": { "provider": "custom", "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit" },
       "thinking_level": "medium"
     },
 
@@ -95,11 +123,9 @@
 
     // 🔽 Hopper: Fast lightweight package name locator
     "hopper": {
-      "model": "gemini-3.5-flash-lite",
-      "fallback": {
-        "provider": "google",
-        "model": "gemini-3.1-flash-lite"
-      }
+      "provider": "custom",
+      "model": "agent/agy-flash",
+      "fallback": { "provider": "custom", "model": "agent/agy-flash" }
     },
 
     // 📝 Outputter: Synthesizes execution trace into final output report
@@ -120,6 +146,9 @@
     // 🔎 Checker: Plan-declared checkpoint verification and exit final review.
     // Thoughts are streamed so the verifier's reasoning shows live in the timeline.
     "checker": {
+      "provider": "custom",
+      "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "fallback": { "provider": "custom", "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit" },
       "thinking_level": "medium",
       "include_thoughts": true
     }
@@ -145,7 +174,8 @@
       // replacing images only after strictly objective, high-density summaries are ready.
       "step_summarizer": {
         "enabled": true, // Whether background step summarization is active
-        "model": "gemini-3.5-flash-lite", // Lightweight model for fast background inference
+        "provider": "custom",
+        "model": "ollama/mlx-community/Qwen3-VL-8B-Instruct-4bit", // VOSHU: summarizes screenshots -> vision lane required (agy-flash/step-5 is text-only)
         "prune_history_xml": true // Prune outdated heavy XML trees from historical steps
       }
     },
@@ -246,7 +276,8 @@
         // call each); milestone closes are exempt, the hard line waives it.
         "min_steps": 3,
         "target_source_tokens": 2000,
-        "model": "gemini-3.8-flash",
+        "provider": "custom",
+        "model": "agent/planner",
         "max_chunks": 8
         // "max_eras": 8 // independent era cap; omitted = follows max_chunks
       },

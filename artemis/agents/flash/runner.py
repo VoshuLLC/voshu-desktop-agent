@@ -165,6 +165,8 @@ class FlashRunner:
                 ctx,
                 model_name=self.step_summarizer_cfg.model,
                 retry_limit=self.memory_runtime_cfg.retry_limit,
+                provider=getattr(self.step_summarizer_cfg, "provider", None),
+                api_base=getattr(self.step_summarizer_cfg, "api_base", None),
                 max_concurrency=self.memory_runtime_cfg.max_concurrency,
                 flush_timeout_s=self.memory_runtime_cfg.flush_timeout_s,
             )

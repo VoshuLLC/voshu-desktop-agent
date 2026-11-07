@@ -36,7 +36,12 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from artemis.context import ArtemisContext
 from artemis.memory.step_memory import JobKey, StepMemoryService
-from artemis.services.llm import RobustChatModelWrapper, get_google_llm, get_llm
+from artemis.services.llm import (
+    RobustChatModelWrapper,
+    get_google_llm,
+    get_llm,
+    get_named_llm,
+)
 from artemis.services.token_meter import record_llm_usage
 from artemis.utils.task_tree import format_actions_clean
 from artemis.utils.visualization import draw_action_overlay_on_image
@@ -151,6 +156,8 @@ class VisualStepSummarizer(StepMemoryService):
         model_name: str | None = None,
         retry_limit: int = 3,
         *,
+        provider: str | None = None,
+        api_base: str | None = None,
         max_concurrency: int = 1,
         flush_timeout_s: float = 30.0,
     ):
@@ -166,10 +173,16 @@ class VisualStepSummarizer(StepMemoryService):
         self._model_name = target_model
         try:
             if model_name:
-                self._llm = get_google_llm(model_name=target_model, temperature=0.0)
+                self._llm = get_named_llm(
+                    target_model, ctx=ctx, provider=provider, api_base=api_base
+                )
             else:
                 self._llm = get_llm(ctx, name="summarizer", is_utils=True)
         except Exception:
+            if provider:
+                # An explicit non-default provider must not silently detour to
+                # a Google client whose credentials may not exist.
+                raise
             self._llm = get_google_llm(model_name=target_model, temperature=0.0)
         try:
             configured = getattr(self._llm, "model", None) or getattr(self._llm, "model_name", None)

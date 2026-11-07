@@ -77,7 +77,7 @@ try:
     from admin_console.database.repositories.session_repository import session_repo
     from admin_console.database.repositories.step_repository import step_repo
     from admin_console.database.repositories.trace_repository import trace_repo
-    from admin_console.routers import media, replay, sessions, steps, stream, system, tasks
+    from admin_console.routers import fleet, media, replay, sessions, steps, stream, system, tasks
     from admin_console.routers.replay import replay_manager
     from admin_console.services.ipc_service import ipc_service
     from admin_console.services.media_service import media_service
@@ -87,7 +87,7 @@ except ImportError:
     from apps.admin_console.core.security import SameOriginBoundaryMiddleware
     from apps.admin_console.core.state import state
     from apps.admin_console.database.repositories.session_repository import session_repo
-    from apps.admin_console.routers import media, replay, sessions, steps, stream, system, tasks
+    from apps.admin_console.routers import fleet, media, recipes, replay, sessions, steps, stream, system, tasks
     from apps.admin_console.routers.replay import replay_manager
     from apps.admin_console.services.ipc_service import ipc_service
     from apps.admin_console.services.model_service import model_service
@@ -218,6 +218,8 @@ async def on_shutdown():
 
 # Mount modular routers
 app.include_router(stream.router)
+app.include_router(fleet.router)
+app.include_router(recipes.router)
 app.include_router(media.router)
 app.include_router(sessions.router)
 app.include_router(steps.router)
@@ -305,6 +307,12 @@ async def serve_showcase_spa(full_path: str):
         admin_index = _admin_console_dir / "index.html"
         if admin_index.exists():
             return HTMLResponse(admin_index.read_text(encoding="utf-8"))
+
+    # Voshu phone-farm console
+    if clean_path in ("fleet", "fleet.html") or clean_path.startswith("fleet/"):
+        fleet_index = _admin_console_dir / "fleet.html"
+        if fleet_index.exists():
+            return HTMLResponse(fleet_index.read_text(encoding="utf-8"))
 
     showcase_dist = _get_showcase_dist()
 

@@ -70,6 +70,12 @@ def build_scrcpy_record_command(
         "mkv",
         "--video-bit-rate",
         video_bit_rate,
+        # scrcpy 5.x recorder: the audio sink opens on a NULL muxer ctx on
+        # hosts where audio capture is denied/unavailable and SIGSEGVs the
+        # demuxer thread (sc_recorder_audio_packet_sink_open ->
+        # avformat_new_stream). Video-only recording is what the analyzer
+        # consumes anyway.
+        "--no-audio",
     ]
     if lock_capture_orientation:
         command.append("--capture-orientation=@")

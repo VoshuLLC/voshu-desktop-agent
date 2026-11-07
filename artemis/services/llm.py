@@ -593,8 +593,40 @@ class RobustChatModelWrapper:
             endpoint=self.endpoint,
         )
 
+    # Providers that pass through self-managed OpenAI-compatible servers
+    # (Voshu Router lanes, local vLLM/MLX endpoints) do not enforce
+    # response_format=json_schema, so models can answer with fenced
+    # markdown JSON. with_structured_output's default "json_schema" method
+    # then raises json_invalid on `msg.content` verbatim. For these
+    # providers we parse tolerantly client-side instead.
+    _TOLERANT_JSON_PROVIDERS = {"custom", "ollama", "vllm"}
+
+    def _tolerant_structured(self, schema):
+        from langchain_core.output_parsers import JsonOutputParser
+        from langchain_core.runnables import RunnableLambda
+        from pydantic import BaseModel as _BaseModel
+
+        parser = JsonOutputParser()  # strips ```json fences, partial-json safe
+        is_pydantic = isinstance(schema, type) and issubclass(schema, _BaseModel)
+
+        def _parse(msg):
+            obj = parser.parse(msg.content if hasattr(msg, "content") else str(msg))
+            return schema.model_validate(obj) if is_pydantic else schema(obj)
+
+        return self.base_model | RunnableLambda(_parse)
+
     def with_structured_output(self, *args, **kwargs):
         if hasattr(self.base_model, "with_structured_output"):
+            schema = args[0] if args else kwargs.get("schema")
+            if (
+                schema is not None
+                and kwargs.get("include_raw") is not True
+                and self._provider_value() in self._TOLERANT_JSON_PROVIDERS
+                and kwargs.get("method", "json_schema") == "json_schema"
+            ):
+                return RobustChatModelWrapper(
+                    self._tolerant_structured(schema), self.ctx, endpoint=self.endpoint
+                )
             return RobustChatModelWrapper(
                 self.base_model.with_structured_output(*args, **kwargs),
                 self.ctx,
@@ -870,6 +902,36 @@ invoke_llm_with_timeout_message = LLMWaitNotice(
 ).__call__
 
 
+def get_named_llm(
+    model_name: str,
+    ctx: ArtemisContext | None = None,
+    provider: str | None = None,
+    temperature: float = 0.0,
+    api_base: str | None = None,
+) -> BaseChatModel:
+    """Build a chat model for an explicitly-named model+provider pair.
+
+    Config surfaces that carry a raw model name instead of a node reference
+    (``agent.flash.step_summarizer``, ``agent.memory.chunking``) call this
+    instead of :func:`get_google_llm` so the configured provider is honored —
+    OpenAI-compatible gateways (``custom``, Ollama, vLLM) stay on the router
+    instead of detouring to a Google client that needs ``GOOGLE_API_KEY``.
+    ``provider=None`` preserves the historical Google behavior.
+    """
+    ep = ModelEndpoint(
+        provider=ModelProvider.from_string(provider or "google"),
+        model_name=model_name,
+        temperature=temperature,
+        timeout_seconds=60.0,
+        api_base=api_base,
+    )
+    raw_model = ModelFactory.get_model(ep)
+    if ctx is None:
+        return raw_model
+    bound_model = raw_model.with_config(callbacks=[DataEngineCallbackHandler(ctx)])
+    return RobustChatModelWrapper(bound_model, ctx, endpoint=ep)
+
+
 # Backward compatible factory functions delegating to ModelFactory
 def get_google_llm(
     model_name: str = "gemini-3.8-flash",
@@ -936,6 +998,8 @@ def _resolve_endpoint(
         reasoning_effort=_get_val(cfg, "reasoning_effort", str),
         include_thoughts=_get_val(cfg, "include_thoughts", bool),
         enable_grounding=_get_val(cfg, "enable_grounding", bool) or False,
+        api_base=_get_val(cfg, "api_base", str),
+        api_key=_get_val(cfg, "api_key", str),
     )
 
 

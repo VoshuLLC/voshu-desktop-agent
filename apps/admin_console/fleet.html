@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOSHU · Artemis Fleet</title>
+<style>
+:root{
+  --bg:#07090d; --panel:#0d1117; --panel2:#11161f; --edge:#1c2330; --edge2:#2a3446;
+  --txt:#e6edf6; --dim:#8b98ab; --faint:#55627a;
+  --blue:#0071E3; --blue2:#4694e3; --blue-glow:rgba(0,113,227,.35);
+  --grn:#10B981; --amb:#F59E0B; --red:#EF4444; --gry:#6B7280;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font:14px/1.45 -apple-system,"SF Pro Text",Inter,"Segoe UI",sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,textarea{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--edge);border-radius:8px;padding:8px 10px;outline:none}
+input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-glow)}
+
+/* ---------- header ---------- */
+#top{height:60px;display:flex;align-items:center;gap:14px;padding:0 20px;border-bottom:1px solid var(--edge);background:linear-gradient(180deg,#0d1117,#0a0e14);flex:none}
+.mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--blue),#0a4fa8);display:grid;place-items:center;font-weight:800;font-size:16px;color:#fff;box-shadow:0 0 18px var(--blue-glow)}
+.brand{font-weight:700;letter-spacing:.14em;font-size:15px}
+.brand b{color:var(--blue2)}
+.sub{color:var(--dim);font-size:12px;letter-spacing:.06em}
+.grow{flex:1}
+.chip{font-size:11px;padding:3px 10px;border-radius:99px;border:1px solid var(--edge2);color:var(--dim);background:var(--panel2)}
+.chip b{color:var(--txt);font-weight:600}
+.btn{background:var(--blue);border-radius:8px;padding:8px 16px;font-weight:600;font-size:13px;transition:.15s}
+.btn:hover{background:#1a80e8;box-shadow:0 0 14px var(--blue-glow)}
+.btn.ghost{background:var(--panel2);border:1px solid var(--edge2);color:var(--txt)}
+.btn.ghost:hover{border-color:var(--blue2);color:var(--blue2)}
+.btn.danger{background:#7f1d1d}.btn.danger:hover{background:#991b1b}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:6px}
+.btn:disabled{opacity:.45;cursor:default;box-shadow:none}
+
+/* ---------- layout ---------- */
+#main{flex:1;display:flex;min-height:0}
+#wall{flex:1;overflow-y:auto;padding:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px;align-content:start}
+#wall::-webkit-scrollbar{width:8px}#wall::-webkit-scrollbar-thumb{background:var(--edge2);border-radius:4px}
+
+/* ---------- device tile ---------- */
+.dev{background:var(--panel);border:1px solid var(--edge);border-radius:14px;overflow:hidden;transition:.2s;cursor:pointer;position:relative}
+.dev:hover{border-color:var(--edge2);transform:translateY(-2px)}
+.dev.busy{border-color:rgba(0,113,227,.55);box-shadow:0 0 22px rgba(0,113,227,.16)}
+.dev.free{border-color:rgba(16,185,129,.4)}
+.dev.dead{border-color:rgba(239,68,68,.5);opacity:.75}
+.dev.booting{border-color:rgba(245,158,11,.5)}
+.dhead{display:flex;align-items:center;gap:8px;padding:10px 12px}
+.dhead .nm{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st{margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 9px;border-radius:99px}
+.st.free{background:rgba(16,185,129,.14);color:var(--grn);border:1px solid rgba(16,185,129,.35)}
+.st.busy{background:rgba(0,113,227,.16);color:var(--blue2);border:1px solid rgba(0,113,227,.4)}
+.st.booting{background:rgba(245,158,11,.14);color:var(--amb);border:1px solid rgba(245,158,11,.35);animation:pulse 1.4s ease-in-out infinite}
+.st.dead{background:rgba(239,68,68,.14);color:var(--red);border:1px solid rgba(239,68,68,.35)}
+.st.offline{background:rgba(107,114,128,.14);color:var(--gry);border:1px solid rgba(107,114,128,.35)}
+@keyframes pulse{50%{opacity:.5}}
+.screen{position:relative;aspect-ratio:9/19;background:#000;display:grid;place-items:center;overflow:hidden}
+.screen img{width:100%;height:100%;object-fit:contain;display:block}
+.screen .ph{position:absolute;inset:0;display:grid;place-items:center;color:var(--faint);font-size:12px;text-align:center;padding:12px}
+.dfoot{padding:9px 12px;display:flex;flex-direction:column;gap:6px}
+.dser{font-size:11px;color:var(--faint);font-family:ui-monospace,Menlo,monospace}
+.dtask{font-size:11px;color:var(--blue2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:15px}
+.dacts{display:flex;gap:6px}
+.dacts .btn{flex:1}
+.goldrev{font-size:10px;color:var(--faint)}
+/* ---------- detail panel ---------- */
+#detail{width:0;overflow:hidden;border-left:1px solid var(--edge);background:var(--panel);transition:width .25s ease;display:flex;flex:none}
+#detail.open{width:620px}
+.dwrap{display:flex;width:620px;min-width:620px;height:100%}
+.dleft{width:300px;flex:none;display:flex;flex-direction:column;padding:14px;gap:10px;border-right:1px solid var(--edge)}
+.dlive{position:relative;flex:1;background:#000;border-radius:18px;border:2px solid var(--edge2);overflow:hidden;min-height:0;touch-action:none;cursor:crosshair}
+.dlive img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;user-select:none}
+.dlive .tapring{position:absolute;width:22px;height:22px;border:2px solid var(--blue2);border-radius:50%;transform:translate(-50%,-50%);animation:tapring .5s ease-out forwards;pointer-events:none}
+@keyframes tapring{to{width:6px;height:6px;opacity:0}}
+.dright{flex:1;display:flex;flex-direction:column;padding:14px;gap:12px;min-width:0;overflow-y:auto}
+.dtitle{display:flex;align-items:center;gap:10px}
+.dtitle h2{font-size:16px;font-weight:700}
+.x{margin-left:auto;color:var(--dim);font-size:18px;padding:4px 8px;border-radius:6px}
+.x:hover{background:var(--panel2);color:var(--txt)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12px}
+.kv .k{color:var(--faint)}
+.kv .v{font-family:ui-monospace,Menlo,monospace;word-break:break-all}
+.sect{font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--faint);text-transform:uppercase;margin-top:4px}
+.goalrow{display:flex;gap:8px}
+.goalrow input{flex:1}
+.keys{display:flex;gap:6px;flex-wrap:wrap}
+.log{background:#000;border:1px solid var(--edge);border-radius:8px;padding:8px 10px;font:11px/1.5 ui-monospace,Menlo,monospace;color:#9db2cc;height:140px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+.log .e{color:var(--red)}
+.log .p{color:var(--blue2)}
+/* ---------- empty + toast ---------- */
+#empty{grid-column:1/-1;text-align:center;padding:80px 20px;color:var(--faint)}
+#empty .big{font-size:42px;margin-bottom:12px;opacity:.5}
+#toasts{position:fixed;bottom:16px;right:16px;display:flex;flex-direction:column;gap:8px;z-index:50}
+.toast{background:var(--panel2);border:1px solid var(--edge2);border-left:3px solid var(--blue);border-radius:8px;padding:10px 14px;font-size:12px;max-width:340px;box-shadow:0 8px 30px rgba(0,0,0,.5);animation:tin .2s ease}
+.toast.err{border-left-color:var(--red)}
+@keyframes tin{from{transform:translateX(20px);opacity:0}}
+</style>
+</head>
+<body>
+<header id="top">
+  <div class="mark">V</div>
+  <div>
+    <div class="brand">VOSHU <b>ARTEMIS FLEET</b></div>
+    <div class="sub">phone farm · golden-image clones · live control</div>
+  </div>
+  <div class="grow"></div>
+  <span class="chip" id="c-total">0 devices</span>
+  <span class="chip" id="c-free">0 free</span>
+  <span class="chip" id="c-busy">0 busy</span>
+  <span class="chip" id="c-gold">golden —</span>
+  <button class="btn ghost sm" id="b-sync" title="Re-scan adb">⟳ Sync</button>
+  <button class="btn sm" id="b-prov1">+ Device</button>
+  <button class="btn sm" id="b-prov3">+ 3</button>
+</header>
+
+<div id="main">
+  <div id="wall"></div>
+  <aside id="detail">
+    <div class="dwrap">
+      <div class="dleft">
+        <div class="dlive" id="dlive">
+          <img id="dlive-img" alt="">
+        </div>
+        <div style="font-size:11px;color:var(--faint);text-align:center">click = tap · drag = swipe</div>
+      </div>
+      <div class="dright">
+        <div class="dtitle"><h2 id="d-name">device</h2><span class="st" id="d-st">—</span><button class="x" id="d-close">✕</button></div>
+        <div class="kv" id="d-kv"></div>
+        <div class="sect">Run a task</div>
+        <div class="goalrow"><input id="d-goal" placeholder="Open Chrome and search…"><button class="btn sm" id="d-run">Run</button></div>
+        <div class="sect">Keys</div>
+        <div class="keys" id="d-keys"></div>
+        <div class="sect">ADB shell</div>
+        <div class="goalrow"><input id="d-cmd" placeholder="pm list packages"><button class="btn ghost sm" id="d-sh">▶</button></div>
+        <div class="log" id="d-log"></div>
+        <div class="sect">Danger zone</div>
+        <div style="display:flex;gap:8px"><button class="btn ghost sm" id="d-reboot">Reboot</button><button class="btn danger sm" id="d-del">Destroy clone</button></div>
+      </div>
+    </div>
+  </aside>
+</div>
+<div id="toasts"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const state = { devices: [], golden: null, selected: null, timer: null };
+
+async function api(path, opts) {
+  const r = await fetch(path, opts ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(opts)} : undefined);
+  if (!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail || r.statusText);
+  return r.json().catch(()=>({}));
+}
+function toast(msg, err){ const t=document.createElement('div');t.className='toast'+(err?' err':'');t.textContent=msg;$('#toasts').appendChild(t);setTimeout(()=>t.remove(),4500); }
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+/* ---------- render ---------- */
+function render(){
+  const w = $('#wall'); const devs = state.devices;
+  $('#c-total').innerHTML = `<b>${devs.length}</b> devices`;
+  const cnt = s => devs.filter(d=>d.status===s).length;
+  $('#c-free').innerHTML = `<b>${cnt('free')}</b> free`;
+  $('#c-busy').innerHTML = `<b>${cnt('busy')}</b> busy`;
+  $('#c-gold').textContent = `golden ${state.golden?.avd||'—'} · ${state.golden?.rev||'no baseline'}`;
+  if (!devs.length){ w.innerHTML = `<div id="empty"><div class="big">▚▞</div><h3>No devices</h3><p>Provision a clone from the golden image to start the farm.</p></div>`; return; }
+  const sel = state.selected;
+  w.innerHTML = devs.map(d=>`
+    <div class="dev ${d.status}" data-id="${d.id}">
+      <div class="dhead"><span class="nm">${esc(d.name)}</span><span class="st ${d.status}">${d.status}</span></div>
+      <div class="screen">
+        ${d.status==='dead'||d.status==='offline' ? `<div class="ph">${d.status==='dead'?'✕ device down':'○ offline'}<br><span style="font-size:10px">${esc(d.serial)}</span></div>` : `<img src="/api/fleet/devices/${d.id}/stream" loading="lazy">`}
+      </div>
+      <div class="dfoot">
+        <div class="dser">${esc(d.serial)} · ${d.kind}</div>
+        <div class="dtask">${d.task?('▸ '+esc(d.task)):''}</div>
+      </div>
+    </div>`).join('');
+  w.querySelectorAll('.dev').forEach(el=>el.onclick=()=>openDetail(el.dataset.id));
+  if (sel) paintDetail(state.devices.find(d=>d.id===sel.id));
+}
+
+/* ---------- detail ---------- */
+function openDetail(id){
+  const d = state.devices.find(x=>x.id===id); if(!d) return;
+  state.selected = d; $('#detail').classList.add('open'); paintDetail(d);
+}
+function paintDetail(d){
+  if(!d) return;
+  $('#d-name').textContent = d.name;
+  const st=$('#d-st'); st.className='st '+d.status; st.textContent=d.status;
+  $('#d-kv').innerHTML = `
+    <span class="k">serial</span><span class="v">${esc(d.serial)}</span>
+    <span class="k">kind</span><span class="v">${d.kind}${d.avd_name?' · '+esc(d.avd_name):''}</span>
+    <span class="k">golden</span><span class="v">${esc(d.golden_rev||'—')}</span>
+    <span class="k">task</span><span class="v">${esc(d.task||'—')}</span>
+    <span class="k">session</span><span class="v">${esc(d.session_id||'—')}</span>`;
+  const img=$('#dlive-img');
+  const src=`/api/fleet/devices/${d.id}/stream`;
+  if (img.dataset.src!==src){ img.dataset.src=src; img.src=src; }
+  $('#d-del').style.display = d.kind==='avd' ? '' : 'none';
+  $('#d-reboot').style.display = d.kind==='avd' ? '' : 'none';
+}
+$('#d-close').onclick=()=>{ state.selected=null; $('#detail').classList.remove('open'); };
+
+/* tap & swipe on the live view */
+(function(){
+  const el=$('#dlive'); let sx=0,sy=0,drag=false;
+  const toNorm=e=>{const r=el.getBoundingClientRect();return[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height]};
+  el.addEventListener('pointerdown',e=>{drag=true;[sx,sy]=toNorm(e);el.setPointerCapture(e.pointerId)});
+  el.addEventListener('pointerup',async e=>{
+    if(!drag||!state.selected)return; drag=false;
+    const[ex,ey]=toNorm(e);
+    const ring=document.createElement('div');ring.className='tapring';
+    ring.style.left=(ex*100)+'%';ring.style.top=(ey*100)+'%';el.appendChild(ring);setTimeout(()=>ring.remove(),600);
+    const dist=Math.hypot(ex-sx,ey-sy);
+    try{
+      if(dist<0.03){ await api(`/api/fleet/devices/${state.selected.id}/input`,{cx:ex,cy:ey}); }
+      else { await api(`/api/fleet/devices/${state.selected.id}/input`,{cx:sx,cy:sy,cx2:ex,cy2:ey,duration_ms:Math.min(1200,Math.max(200,dist*1600))}); }
+    }catch(err){toast('input failed: '+err.message,true)}
+  });
+})();
+
+/* keys */
+['BACK','HOME','APP_SWITCH','ENTER','POWER'].forEach(k=>{
+  const b=document.createElement('button');b.className='btn ghost sm';b.textContent=k==='APP_SWITCH'?'RECENTS':k;
+  b.onclick=async()=>{try{await api(`/api/fleet/devices/${state.selected.id}/key`,{key:k});log(`key ${k}`)}catch(e){toast(e.message,true)}};
+  $('#d-keys').appendChild(b);
+});
+function log(m,cls){const l=$('#d-log');const s=document.createElement('div');if(cls)s.className=cls;s.textContent=m;l.appendChild(s);l.scrollTop=l.scrollHeight;}
+
+$('#d-run').onclick=async()=>{
+  const g=$('#d-goal').value.trim(); if(!g||!state.selected)return;
+  try{ log('▶ '+g,'p'); const r=await api(`/api/fleet/devices/${state.selected.id}/run`,{goal:g}); log('queued '+(r.tasks?.[0]?.session_id||'').slice(0,8)); $('#d-goal').value=''; }
+  catch(e){log('run failed: '+e.message,'e')}
+};
+$('#d-sh').onclick=async()=>{
+  const c=$('#d-cmd').value.trim(); if(!c||!state.selected)return;
+  try{ log('$ '+c,'p'); const r=await api(`/api/fleet/devices/${state.selected.id}/shell`,{cmd:c}); if(r.out)log(r.out); if(r.err)log(r.err,'e'); $('#d-cmd').value=''; }
+  catch(e){log('shell failed: '+e.message,'e')}
+};
+$('#d-cmd').addEventListener('keydown',e=>{if(e.key==='Enter')$('#d-sh').click()});
+$('#d-goal').addEventListener('keydown',e=>{if(e.key==='Enter')$('#d-run').click()});
+$('#d-reboot').onclick=async()=>{try{toast('rebooting '+state.selected.id);await api(`/api/fleet/devices/${state.selected.id}/reboot`,{})}catch(e){toast(e.message,true)}};
+$('#d-del').onclick=async()=>{
+  const d=state.selected; if(!confirm(`Destroy ${d.id}? The clone is deleted; the golden image is untouched.`))return;
+  try{ await api(`/api/fleet/devices/${d.id}`,{}) /* DELETE below */ }catch(e){}
+  try{ const r=await fetch(`/api/fleet/devices/${d.id}`,{method:'DELETE'}); if(r.ok){toast('destroyed '+d.id);$('#d-close').click()}else toast('destroy failed',true)}catch(e){toast(e.message,true)}
+};
+
+/* provision + sync */
+async function prov(n){try{toast('provisioning '+n+' device'+(n>1?'s':'')+' — cloning golden…');const r=await api('/api/fleet/provision',{count:n});(r.results||[]).forEach(x=>toast(x.ok?`${x.id} online @ ${x.serial}`:`${x.id||'clone'} failed: ${x.error}`,!x.ok));if(r.created_golden)toast('golden baseline created');}catch(e){toast(e.message,true)}refresh()}
+$('#b-prov1').onclick=()=>prov(1);$('#b-prov3').onclick=()=>prov(3);
+$('#b-sync').onclick=refresh;
+
+async function refresh(){
+  try{ const d=await api('/api/fleet/devices'); state.devices=d.devices; state.golden=d.golden; render(); }
+  catch(e){ /* daemon may be busy */ }
+}
+refresh(); setInterval(refresh,2500);
+</script>
+</body>
+</html>
