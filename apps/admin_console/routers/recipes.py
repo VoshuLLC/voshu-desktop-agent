@@ -5,7 +5,9 @@ POST   /api/recipes/from-session     {session_id, recipe_id, name?, tags?, param
 GET    /api/recipes/{id}             full recipe JSON
 PUT    /api/recipes/{id}             replace recipe with a validated body (hand edits)
 DELETE /api/recipes/{id}             remove recipe file
-POST   /api/recipes/{id}/run         {device_serial?, variables?, profile?} -> queue a replay
+POST   /api/recipes/{id}/run         {device_serial?, variables?, profile?} -> queue a replay;
+                                     device_serial "auto" picks a free fleet emulator,
+                                     "all" enqueues one run per free fleet emulator
 GET    /api/recipes/runs/{run_id}    persisted RecipeRunResult / live run record
 
 Recipe runs go through the same device machinery as goal tasks, but the queue
@@ -29,6 +31,8 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from artemis.config import WORKSPACE_ROOT
+from artemis.fleet.provisioner import sync_adb
+from artemis.fleet.registry import fleet_registry
 from artemis.recipes.models import Recipe, is_valid_recipe_id
 from artemis.recipes.recorder import (
     RECIPE_RUNS_DIR,
@@ -182,6 +186,18 @@ async def _watch_recipe_run(
             finished_at=time.time(),
         )
 
+    # Release the fleet device a "auto"/"all" dispatch claimed (mirrors
+    # run_on_device's busy marking; freeing here keeps fleet emulation free
+    # for the next pick — otherwise a stale "busy" would strand it).
+    fleet_device_id = (record or {}).get("fleet_device_id")
+    if fleet_device_id:
+        try:
+            await fleet_registry.update(
+                fleet_device_id, status="free", task=None, session_id=None
+            )
+        except Exception as exc:
+            print(f"[recipe-runs] Could not release fleet device {fleet_device_id}: {exc}")
+
     # The worker normally ends its own session row; this is the fallback so a
     # crashed worker never leaves a 'running' session behind.
     try:
@@ -222,6 +238,7 @@ async def enqueue_recipe_run(
     device_serial: str | None = None,
     variables: dict[str, Any] | None = None,
     profile: str | None = None,
+    fleet_device_id: str | None = None,
 ) -> dict[str, Any]:
     """Dispatches a recipe replay through the daemon's normal run machinery.
 
@@ -337,6 +354,7 @@ async def enqueue_recipe_run(
         "device_serial": device_serial,
         "variables": variables,
         "pid": proc.pid,
+        "fleet_device_id": fleet_device_id,
         "status": "running",
         "created_at": now,
         "start_time": now,
@@ -456,8 +474,57 @@ async def remove_recipe(recipe_id: str):
 
 class RecipeRunRequest(BaseModel):
     device_serial: str | None = None
+    """Target adb serial, or a fleet selector: ``"auto"`` picks one free
+    avd/emulator from the fleet registry, ``"all"`` fans out to every free one."""
     variables: dict[str, Any] | None = None
     profile: str | None = None
+
+
+async def _free_fleet_emulators() -> list:
+    """Fleet devices able to take a recipe run: status ``free``, kind avd or
+    an ``emulator-*`` serial (registry kinds: avd | physical | remote)."""
+    try:
+        devices = await sync_adb()
+    except Exception:
+        devices = fleet_registry.list()
+    return [
+        d
+        for d in devices
+        if d.status == "free"
+        and (d.kind == "avd" or str(d.serial).startswith("emulator-"))
+    ]
+
+
+async def _enqueue_on_fleet_device(
+    recipe,
+    dev,
+    variables: dict[str, Any] | None,
+    profile: str | None,
+) -> dict[str, Any]:
+    """Claims one fleet device and dispatches the recipe run on it.
+
+    Mirrors ``run_on_device``'s busy marking so the fleet panel reflects the
+    claim; ``fleet_device_id`` rides into the run record so the watcher frees
+    the device when the worker exits.
+    """
+    goal = f"[recipe] {recipe.name}"
+    await fleet_registry.update(dev.id, status="busy", task=goal[:160])
+    try:
+        resp = await enqueue_recipe_run(
+            recipe,
+            device_serial=dev.serial,
+            variables=variables,
+            profile=profile,
+            fleet_device_id=dev.id,
+        )
+    except Exception:
+        await fleet_registry.update(dev.id, status="free", task=None)
+        raise
+    if resp.get("status") != "started":
+        await fleet_registry.update(dev.id, status="free", task=None)
+        return resp
+    await fleet_registry.update(dev.id, session_id=resp.get("run_id"))
+    return resp
 
 
 @router.post("/api/recipes/{recipe_id}/run")
@@ -465,6 +532,35 @@ async def run_recipe(recipe_id: str, req: RecipeRunRequest):
     recipe = _load_or_404(recipe_id)
     if not recipe.steps:
         raise HTTPException(400, f"recipe {recipe.id} has no replayable steps")
+
+    selector = str(req.device_serial or "").strip().lower()
+    if selector in ("auto", "all"):
+        candidates = await _free_fleet_emulators()
+        if not candidates:
+            raise HTTPException(
+                503, "no free fleet device (kind avd/emulator) for recipe run"
+            )
+        if selector == "auto":
+            candidates = candidates[:1]
+        runs = []
+        tasks = []
+        for dev in candidates:
+            resp = await _enqueue_on_fleet_device(
+                recipe, dev, req.variables, req.profile
+            )
+            runs.append(resp)
+            tasks.extend(resp.get("tasks") or [])
+        if selector == "auto":
+            return runs[0]
+        started = [r for r in runs if r.get("status") == "started"]
+        return {
+            "status": "started" if started else "failed",
+            "device_serial": "all",
+            "spawned": len(started),
+            "runs": runs,
+            "tasks": tasks,
+        }
+
     return await enqueue_recipe_run(
         recipe,
         device_serial=req.device_serial,

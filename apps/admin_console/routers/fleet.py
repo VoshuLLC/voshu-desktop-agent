@@ -1,16 +1,23 @@
-"""Fleet API — Voshu phone-farm surface for the admin console.
+"""Fleet API — Voshu device-farm surface for the admin console.
 
-GET  /api/fleet/devices            live registry + adb merge
+GET  /api/fleet/devices            live registry + adb merge + agentd health
 GET  /api/fleet/devices/{id}/stream  per-device MJPEG
 GET  /api/fleet/devices/{id}/frame   single PNG frame
 POST /api/fleet/provision          {count} -> clone golden + boot
+POST /api/fleet/enroll             {kind,serial,host,port?,name?,token?} ->
+                                   register an external agentd device (mac|win)
 POST /api/fleet/devices/{id}/run   {goal} -> task on that device serial
 POST /api/fleet/devices/{id}/input {x,y} | {x1,y1,x2,y2,duration} -> tap/swipe
 POST /api/fleet/devices/{id}/key   {key} -> BACK/HOME/APP_SWITCH/ENTER
-POST /api/fleet/devices/{id}/shell {cmd} -> adb shell (read-only-ish ops)
+POST /api/fleet/devices/{id}/shell {cmd} -> adb shell / agentd shell
 POST /api/fleet/devices/{id}/reboot
-DELETE /api/fleet/devices/{id}     kill + delete clone
+GET  /api/fleet/devices/{id}/memory  durable workspace pack (notes + last runs)
+DELETE /api/fleet/devices/{id}     kill + delete clone (unenroll for mac|win)
 GET  /api/fleet/status             counts, golden rev, ports
+
+kind "mac"|"win" devices carry a `host` (agentd base URL) and forward
+input/key/shell/frame/stream to it instead of adb — same request/response
+shapes. Provision/reboot/run are AVD- or adb-bound and answer 501 honestly.
 """
 
 import asyncio
@@ -22,6 +29,10 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from artemis.toolchain import find_adb
+from artemis.recipes.workspaces import memory_pack
+from artemis.fleet.agentd import (
+    AGENT_KINDS, agentd_frame, agentd_json, agentd_stream, enroll, sync_agents,
+)
 from artemis.fleet.provisioner import (
     GOLDEN_AVD, FARM_HOME, adb_devices, destroy, ensure_golden, golden_rev,
     provision, reboot, sync_adb,
@@ -60,11 +71,13 @@ async def _adb(serial: str, *args, timeout=15) -> tuple[int, str, str]:
 
 @router.get("/api/fleet/devices")
 async def list_devices():
-    devices = await sync_adb()
+    await sync_adb()
+    devices = await sync_agents()  # health-poll kind mac|win agentd hosts
     return {
         "devices": [
             {
                 "id": d.id, "name": d.name, "serial": d.serial, "kind": d.kind,
+                "host": d.host,
                 "status": d.status, "golden_rev": d.golden_rev, "task": d.task,
                 "session_id": d.session_id, "booted_at": d.booted_at,
                 "last_seen": d.last_seen,
@@ -76,9 +89,25 @@ async def list_devices():
     }
 
 
+def _agentd_result(res: dict):
+    """Map an agentd reply to the same client contract as the adb paths.
+
+    Transport failures are honest 503s; semantic failures stay in-body
+    ({ok:false,error}) exactly like adb's {ok:false,err}.
+    """
+    if "unreachable" in str(res.get("error", "")) or "no agentd host" in str(res.get("error", "")):
+        raise HTTPException(503, res.get("error"))
+    return res
+
+
 @router.get("/api/fleet/devices/{device_id}/stream")
 async def device_stream(device_id: str):
     d = _dev(device_id)
+    if d.kind in AGENT_KINDS:
+        return StreamingResponse(
+            agentd_stream(d),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
     return StreamingResponse(
         fleet_stream_service.mjpeg(d.serial),
         media_type="multipart/x-mixed-replace; boundary=frame",
@@ -88,6 +117,11 @@ async def device_stream(device_id: str):
 @router.get("/api/fleet/devices/{device_id}/frame")
 async def device_frame(device_id: str):
     d = _dev(device_id)
+    if d.kind in AGENT_KINDS:
+        frame, err = await agentd_frame(d)
+        if not frame:
+            raise HTTPException(503, f"no frame — {err}")
+        return Response(content=frame, media_type="image/png")
     frame = await fleet_stream_service.frame(d.serial)
     if not frame:
         raise HTTPException(503, "no frame yet — device may be booting")
@@ -109,6 +143,31 @@ async def provision_devices(req: ProvisionRequest):
     return {"ok": all(r.get("ok") for r in results), "results": results, "created_golden": gold.get("created", False)}
 
 
+class EnrollRequest(BaseModel):
+    kind: str = "mac"            # mac | win — agentd-hosted desktop kinds
+    serial: str                  # addressing key, e.g. "mac-studio"
+    host: str                    # agentd base: "127.0.0.1" | "http://h:7778"
+    port: int | None = None
+    name: str | None = None
+    token: str | None = None     # per-device bearer, stored in registry meta
+
+
+@router.post("/api/fleet/enroll")
+async def enroll_device(req: EnrollRequest):
+    """Register an externally-hosted agentd device — no spawn, no clone.
+
+    Registry insert + immediate health check; an unreachable agent enrolls
+    as "offline" so boxes can join before their daemon is up.
+    """
+    res = await enroll(
+        kind=req.kind, serial=req.serial, host=req.host,
+        port=req.port, name=req.name, token=req.token,
+    )
+    if not res.get("ok"):
+        raise HTTPException(400, res.get("error", "enroll failed"))
+    return res
+
+
 class FleetRunRequest(BaseModel):
     goal: str
     profile: str | None = None
@@ -117,6 +176,10 @@ class FleetRunRequest(BaseModel):
 @router.post("/api/fleet/devices/{device_id}/run")
 async def run_on_device(device_id: str, req: FleetRunRequest):
     d = _dev(device_id)
+    if d.kind in AGENT_KINDS:
+        raise HTTPException(
+            501, f"task sessions for kind {d.kind} need the HttpDesktopDriver "
+                 "(VOSHU-DEVICE-CONTROL §A.5) — input/key/shell/frame work today")
     if d.status != "free":
         raise HTTPException(409, f"device is {d.status}")
     await fleet_registry.update(device_id, status="busy", task=req.goal[:160])
@@ -144,11 +207,27 @@ class InputRequest(BaseModel):
     cy: float | None = None
     cx2: float | None = None
     cy2: float | None = None
+    # agentd extras (mac|win) — ignored by the adb path
+    action: str | None = None  # click|double|right|long|swipe|scroll
+    nx: float | None = None    # actuator dialect: normalized 0..1000
+    ny: float | None = None
+    nx2: float | None = None
+    ny2: float | None = None
+    dx: float | None = None    # scroll deltas (points; unit:"lines" for lines)
+    dy: float | None = None
+    unit: str | None = None
+    times: int | None = None
+    space: str | None = None   # explicit coord space for x/y: points|norm|norm1000
 
 
 @router.post("/api/fleet/devices/{device_id}/input")
 async def device_input(device_id: str, req: InputRequest):
     d = _dev(device_id)
+    if d.kind in AGENT_KINDS:
+        res = await agentd_json(
+            d, "POST", "/input",
+            json=req.model_dump(exclude_none=True), timeout=20.0)
+        return _agentd_result(res)
     if req.cx is not None and req.cy is not None:
         _, size, _ = await _adb(d.serial, "shell", "wm", "size")
         import re
@@ -181,6 +260,11 @@ class KeyRequest(BaseModel):
 @router.post("/api/fleet/devices/{device_id}/key")
 async def device_key(device_id: str, req: KeyRequest):
     d = _dev(device_id)
+    if d.kind in AGENT_KINDS:
+        res = await agentd_json(d, "POST", "/key", json={"key": req.key})
+        if res.get("ok") is False and "unknown key" in str(res.get("error", "")):
+            raise HTTPException(400, res["error"])
+        return _agentd_result(res)
     code = _KEYCODES.get(req.key.upper())
     if code is None:
         raise HTTPException(400, f"unknown key; allowed: {sorted(_KEYCODES)}")
@@ -198,6 +282,9 @@ async def device_shell(device_id: str, req: ShellRequest):
     cmd = req.cmd.strip()
     if not cmd or any(b in cmd for b in ("|", ";", "&", ">", "<", "`", "$(")):
         raise HTTPException(400, "single adb shell command, no shell metachars")
+    if d.kind in AGENT_KINDS:
+        res = await agentd_json(d, "POST", "/shell", json={"cmd": cmd}, timeout=25.0)
+        return _agentd_result(res)
     try:
         rc, out, err = await _adb(d.serial, "shell", cmd, timeout=20)
     except asyncio.TimeoutError:
@@ -205,13 +292,31 @@ async def device_shell(device_id: str, req: ShellRequest):
     return {"ok": rc == 0, "out": out.strip()[:4000], "err": err.strip()[:2000]}
 
 
+@router.get("/api/fleet/devices/{device_id}/memory")
+async def device_memory(device_id: str, last_n: int = 20):
+    """Durable workspace pack for the planner: notes.md + last ``last_n``
+    memory lines + remembered coords (``traces/workspaces/<serial>/``)."""
+    d = _dev(device_id)
+    return memory_pack(d.serial, last_n=last_n)
+
+
 @router.post("/api/fleet/devices/{device_id}/reboot")
 async def device_reboot(device_id: str):
+    d = _dev(device_id)
+    if d.kind in AGENT_KINDS:
+        raise HTTPException(
+            501, f"reboot is not supported for kind {d.kind} — the fleet does "
+                 "not power-manage desktop hosts")
     return await reboot(device_id)
 
 
 @router.delete("/api/fleet/devices/{device_id}")
 async def device_delete(device_id: str):
+    d = _dev(device_id)
+    if d.kind in AGENT_KINDS:
+        # honest unenroll: nothing was spawned, nothing is killed
+        await fleet_registry.remove(device_id)
+        return {"ok": True, "id": device_id, "unenrolled": True}
     return await destroy(device_id)
 
 

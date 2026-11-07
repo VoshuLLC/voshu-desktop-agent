@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 from artemis.toolchain import find_adb
-from artemis.fleet.registry import FleetDevice, fleet_registry
+from artemis.fleet.registry import AGENT_KINDS, FleetDevice, fleet_registry
 
 SDK = Path(os.environ.get("ANDROID_SDK_ROOT", Path.home() / "Library/Android/sdk"))
 FARM_HOME = Path(os.environ.get("ARTEMIS_FARM_HOME", "/Volumes/DevData/Android/avd/voshu-farm"))
@@ -216,9 +216,15 @@ async def reboot(device_id: str) -> dict:
 
 
 async def sync_adb() -> list[FleetDevice]:
-    """Merge live `adb devices` into the registry (physical + remote hosts)."""
+    """Merge live `adb devices` into the registry (physical + remote hosts).
+
+    kind mac|win devices never appear in adb — they are skipped here and
+    health-polled by artemis.fleet.agentd.sync_agents() instead.
+    """
     live = dict(await adb_devices())
     for dev in fleet_registry.list():
+        if dev.kind in AGENT_KINDS:
+            continue
         if dev.serial in live:
             state = live[dev.serial]
             if state == "device" and dev.status in ("dead", "offline", "booting"):

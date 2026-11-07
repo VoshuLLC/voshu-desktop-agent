@@ -15,6 +15,10 @@ unified workspace, `/fleet` standalone wall).
   `{{var}}` injection + preconditions (`launch_app`/`wait_for_text`/
   `if_text_then_tap`) + `required`-flagged asserts (v1.1 landed 2026-11-07).
 - `routers/`: `fleet.py`, `recipes.py` mounted in `apps/admin_console/server.py`.
+- `artemis/recipes/workspaces.py` — per-device durable workspaces
+  (`traces/workspaces/<serial>/{notes.md,assets/,memories.md,coords.json}`);
+  `@workspace:<serial>/<path>` arg resolution + `inject_file` step (adb push)
+  + `memory_pack()` planner API; `GET /api/fleet/devices/{id}/memory` exposes it.
 - `index.html` = view-switch rail (Fleet | Sessions) on Artemis light tokens;
   Select-mode → broadcast goal dispatch across devices.
 - LLM: all nodes resolve through `OPENAI_BASE_URL=http://voshu-router:8787/v1`.
@@ -29,6 +33,40 @@ unified workspace, `/fleet` standalone wall).
 
 ## What was done
 
+- 2026-11-07 ~06:30 ET — Desktop fleet member `kind:"mac"` shipped (uncommitted,
+  devin): `artemis/desktop/macagentd.py` — stdlib-only HTTP agent on
+  127.0.0.1:7778 (system python3, zero pip deps): `screencapture`→PNG/JPEG +
+  MJPEG `/stream`, CGEvent input via a ctypes Quartz bridge (click/double/
+  right/long/swipe/scroll), unicode `/type`, `/key` (ENTER/TAB/ESC/BACK→esc/
+  HOME→⌘-space/arrows/F-keys; POWER→501, VOLUME via osascript), metachar-
+  blocked `/shell`, `/app` launch|terminate, `/doctor` TCC probe (real
+  `AXIsProcessTrustedWithOptions`/`CGPreflightScreenCaptureAccess`), and a
+  working ctypes `/hierarchy` (254-node frontmost-app AX tree emitted as
+  uiautomator-shaped dicts). Bearer token optional via `MACAGENTD_TOKEN`.
+  `artemis/fleet/agentd.py` — `enroll()` + `sync_agents()` + httpx forwarding;
+  `POST /api/fleet/enroll` added; input/key/shell/frame/stream forward to
+  `device.host` for agent kinds (same response shapes); run/reboot → honest
+  501; DELETE → unenroll. `FleetDevice.host` added; `sync_adb` skips mac|win.
+  Verified live on a :8001 test console: enrolled `mac-studio` → status free,
+  frame/shell/input/key/MJPEG-stream all real through `/api/fleet/devices/…`;
+  one center click fired (landed inside the QEMU guest window). TCC grants
+  already held by the parent chain — no prompt appeared. `macagentd` left
+  RUNNING, registered as `artemis-macagentd` in `~/local-services/
+  services.json` + SERVICES.md #16.
+- 2026-11-07 ~06:20 ET — Recipes v1.2 (uncommitted, devin): `{{var}}` values +
+  step args accept `@workspace` file refs resolved to per-device workspaces;
+  new `inject_file` step action (`{workspace_path, device_path}` → adb push);
+  `POST /api/recipes/{id}/run` takes `device_serial:"auto"` (first free
+  avd/emulator in the fleet registry) or `"all"` (one queued run per free
+  device, `runs`+`tasks` in response); fleet devices claimed busy on dispatch
+  and freed by the run watcher; `RecipeStep.on_fail:"vision"` opt-in lane does
+  ONE bounded VLM call (`validator_pixel_safety_net` node → Qwen3-VL) for a
+  replacement ActionSpec, marks the step `repaired`, and persists the fix into
+  the recipe file (`recipe.patches` audit log). Verified live on :8000 daemon
+  (worker picks up new code per-run): `inject_file` pushed a workspace asset
+  to emulator-5556:/sdcard/Download + memories.md line written; auto/all and
+  repair paths unit-verified in-process; router-level auto/all needs daemon
+  restart to serve.
 - 2026-11-07 ~05:55 ET — Recipes v1.1 (uncommitted): `precondition` gate on
   `RecipeStep` evaluated pre-action through the same session channel;
   `if_text_then_tap` polls hierarchy → normalized `click` (conditional
@@ -48,12 +86,18 @@ unified workspace, `/fleet` standalone wall).
 
 ## Open threads
 
-- Recipes v1.1 landed (uncommitted diff): precondition steps + required-flagged
-  asserts + `PUT /api/recipes/{id}` + console UI. Daemon restart needed for the
-  new route + `app_package` field to be live (workers already pick up the new
-  runner per-run).
+- Recipes v1.1+v1.2 landed (uncommitted diff): precondition steps + required-
+  flagged asserts + `PUT /api/recipes/{id}` + console UI + workspaces/inject/
+  auto-all/vision-repair. Daemon restart needed for the new routes + `auto`/
+  `all` selector to be live (workers already pick up the new runner per-run).
+  NOTE: the same uncommitted diff also carries the `kind:"mac"` desktop work
+  (done ~06:30, entry above) — `artemis/fleet/{registry,provisioner,agentd}.py`,
+  `routers/fleet.py`, `artemis/desktop/`. One restart serves both.
 - Multi-goal `/api/run` batch; Compute `devices` registry contract (needs doc in
   voshu-compute `docs/architecture/` before any code crosses that boundary).
-- Desktop drivers `kind:"mac"|"win"` — spec `voshu-docs/05-design/
-  VOSHU-DEVICE-CONTROL.md`; TCC grants are the hard manual step on macOS.
+- Desktop `kind:"mac"` SHIPPED (above); `kind:"win"` winagentd still open —
+  spec `voshu-docs/05-design/VOSHU-DEVICE-CONTROL.md`. TCC grants held on this
+  box; other macs still need manual Accessibility + Screen Recording toggles.
+- mac `/run` (LLM sessions on the desktop) needs HttpDesktopDriver +
+  DesktopActuator per spec §A.5 — returns 501 today.
 - Golden re-baseline flow: bump `GOLDEN_REV` → drain/reclone fleet.

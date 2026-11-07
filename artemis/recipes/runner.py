@@ -35,6 +35,20 @@ Per-step ``timeout_ms`` wraps the call in ``asyncio.wait_for``: abandoning the
 caller future is safe here (the transport call completes inside the session's
 owner task — see ``ActionSession`` docs), and the runner aborts the run rather
 than interleaving later steps with an in-flight action.
+
+Two opt-in surfaces extend the deterministic core:
+
+* ``@workspace`` references — a step arg (or ``{{var}}`` value) of the form
+  ``@workspace:<serial>/<path>`` resolves into the device's durable
+  workspace under ``traces/workspaces/``; the runner-side ``inject_file``
+  action (``{workspace_path, device_path}``) adb-pushes it before the steps
+  that consume it. The workspace is ensured before each run and gets one
+  ``memories.md`` line after it.
+* ``on_fail: "vision"`` — when the step's action or a ``required`` assert
+  fails, exactly one bounded VLM call proposes a replacement ActionSpec; a
+  successful repair marks the step ``repaired`` and rewrites the step in the
+  recipe file (logged in ``recipe.patches``). Any other value — and the
+  default — keeps replay deterministic with zero LLM calls.
 """
 
 from __future__ import annotations
@@ -50,12 +64,20 @@ from typing import Any
 import uuid
 
 from artemis.config.paths import TRACES_PATH
+from artemis.mcp.action_types import ActionCode, ActionResult
 from artemis.recipes.models import (
     VARIABLE_PATTERN,
     Recipe,
     RecipeRunResult,
     RecipeStep,
     RecipeStepResult,
+)
+from artemis.recipes.workspaces import (
+    append_memory,
+    ensure_workspace,
+    is_workspace_ref,
+    memory_line,
+    resolve_workspace_path,
 )
 from third_party.mobile_use.utils.logger import get_logger
 
@@ -70,6 +92,30 @@ _RUN_SHOTS_DIR = Path(TRACES_PATH) / "recipes" / "runs" / "shots"
 
 #: ``[x1,y1][x2,y2]`` pixel bounds on a hierarchy element.
 _BOUNDS_RE = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
+
+#: Prompt for the bounded ``on_fail: "vision"`` repair lane. The model sees the
+#: failed step + a live screenshot and must emit exactly one ActionSpec JSON.
+_VISION_REPAIR_PROMPT = """You are repairing one step of a deterministic UI \
+replay on an Android device. The recorded step below just failed. Look at the \
+current screenshot and propose ONE replacement device action that accomplishes \
+the step's intent from the state you see.
+
+Reply with ONLY a JSON object — no prose, no code fences:
+{"action": "<tool>", "args": {<wire args>}}
+
+Wire dialect (same as the recipe's steps):
+- click {"target": [x, y]}                    x,y are 0-1000 normalized coords
+- long_press {"target": [x, y], "duration_ms": int}
+- input_text {"text": "...", "clear_exist": bool, "target": [x, y]?}
+- swipe {"start": [x, y], "end": [x, y], "duration_ms": int}
+- press_key {"key": "back"|"home"|"enter"|"delete"|"tab"|"search"|"menu"|"app_switch"}
+- click_sequence {"sequence": [[x, y], ...], "delay_ms": int}
+- wait_for_delay {"time_in_ms": int}
+- manage_app {"action": "launch"|"stop", "app_name": "<package>"}
+- open_link {"url": "..."}
+
+If nothing on screen can fix the step, emit your single best guess anyway —
+a click on the most plausible element is better than no answer."""
 
 
 def substitute_vars(value: Any, variables: dict[str, Any]) -> Any:
@@ -88,6 +134,28 @@ def substitute_vars(value: Any, variables: dict[str, Any]) -> Any:
         lambda m: str(variables[m.group(1)]) if m.group(1) in variables else m.group(0),
         value,
     )
+
+
+def resolve_asset_args(value: Any, device_serial: str | None) -> Any:
+    """Rewrites ``@workspace`` file references to absolute local paths.
+
+    A variable or literal arg of the form ``@workspace:<serial>/<path>`` (or
+    ``@workspace/<path>`` for the running device) resolves into that device's
+    durable workspace — the file can then be pushed (``inject_file``) or fed
+    to an action taking an image path. A missing file or a ``..`` escape is an
+    authoring error: it raises, which fails the step like any bad arg.
+    """
+    if isinstance(value, dict):
+        return {k: resolve_asset_args(v, device_serial) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [resolve_asset_args(v, device_serial) for v in value]
+    if not is_workspace_ref(value):
+        return value
+    if not device_serial:
+        raise ValueError(
+            f"workspace reference {value!r} needs a device (run has no serial)"
+        )
+    return str(resolve_workspace_path(device_serial, value))
 
 
 class RecipeRunner:
@@ -323,6 +391,244 @@ class RecipeRunner:
 
         return False, f"unknown assert_after type: {kind!r}", None, None
 
+    # --- file injection ----------------------------------------------------
+
+    async def _inject_file(
+        self, args: dict[str, Any], device_serial: str | None
+    ) -> ActionResult:
+        """``inject_file`` step: pushes a workspace file to the device.
+
+        Runner-side action (no MCP tool): ``adb push`` through the context's
+        adb client, so recipes can stage images/payloads before the steps that
+        consume them. Args: ``workspace_path`` (``@workspace`` ref, ``assets/``
+        name, or absolute path under the workspaces root) and ``device_path``
+        (absolute path on the device).
+        """
+        workspace_path = str(args.get("workspace_path") or "")
+        device_path = str(args.get("device_path") or "")
+        if not device_serial:
+            return ActionResult.failure(
+                "inject_file", "no device serial for this run", ActionCode.INVALID_ARGS
+            )
+        if not workspace_path or not device_path.startswith("/"):
+            return ActionResult.failure(
+                "inject_file",
+                "inject_file needs 'workspace_path' and an absolute 'device_path'",
+                ActionCode.INVALID_ARGS,
+            )
+        try:
+            local = resolve_workspace_path(device_serial, workspace_path)
+        except (ValueError, FileNotFoundError) as exc:
+            return ActionResult.failure(
+                "inject_file", str(exc), ActionCode.INVALID_ARGS
+            )
+        if local.is_dir():
+            return ActionResult.failure(
+                "inject_file",
+                f"workspace_path {workspace_path!r} is a directory",
+                ActionCode.INVALID_ARGS,
+            )
+        adb_client = getattr(self.ctx, "adb_client", None)
+        if adb_client is None:
+            return ActionResult.failure(
+                "inject_file", "ctx has no adb_client", ActionCode.DEVICE_ERROR
+            )
+        try:
+            device = adb_client.device(device_serial)
+            await asyncio.to_thread(device.sync.push, str(local), device_path)
+        except Exception as exc:
+            return ActionResult.failure(
+                "inject_file",
+                f"adb push failed: {exc}",
+                ActionCode.DEVICE_ERROR,
+            )
+        logger.info(
+            f"inject_file pushed {local} -> {device_serial}:{device_path}"
+        )
+        return ActionResult.success(
+            "inject_file",
+            f"pushed {local.name} to {device_path}",
+        )
+
+    # --- bounded vision repair (opt-in per step) ---------------------------
+
+    async def _propose_repair_action(
+        self,
+        screenshot_b64: str,
+        step: RecipeStep,
+        args: dict[str, Any],
+        outcome: RecipeStepResult,
+    ) -> tuple[str, dict[str, Any]] | None:
+        """One VLM call proposing a replacement ActionSpec; ``None`` on any
+        failure — the caller then fails the step normally.
+
+        Imports live inside so the deterministic path never pays for the LLM
+        stack; this lane only runs when the step opts in via ``on_fail``.
+        """
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from artemis.mcp.action_manifest import DEVICE_ACTIONS, INTERNAL_ACTIONS
+        from artemis.services.llm import acomplete_structured, get_llm
+
+        allowed = sorted(DEVICE_ACTIONS - INTERNAL_ACTIONS)
+        failed = {
+            "step_index": outcome.step_index,
+            "action": step.action,
+            "args": args,
+            "description": step.description,
+            "error": outcome.error,
+        }
+        messages = [
+            SystemMessage(content=_VISION_REPAIR_PROMPT),
+            HumanMessage(
+                content=[
+                    {
+                        "type": "text",
+                        "text": (
+                            "Failed step (JSON):\n"
+                            + json.dumps(failed, ensure_ascii=False)
+                            + f"\nAllowed tools: {', '.join(allowed)}"
+                            + "\nCurrent screenshot:"
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{screenshot_b64}"
+                        },
+                    },
+                ]
+            ),
+        ]
+        try:
+            llm = get_llm(self.ctx, name="validator_pixel_safety_net")
+        except Exception as exc:
+            logger.warning(f"vision repair unavailable (no llm): {exc}")
+            return None
+        try:
+            parsed = await asyncio.wait_for(
+                acomplete_structured(llm, messages), timeout=60.0
+            )
+        except Exception as exc:
+            logger.warning(f"vision repair call failed: {exc}")
+            return None
+        if not isinstance(parsed, dict):
+            logger.warning(f"vision repair returned non-object: {parsed!r}")
+            return None
+        action = str(parsed.get("action") or "")
+        new_args = parsed.get("args")
+        if action not in allowed or not isinstance(new_args, dict):
+            logger.warning(
+                f"vision repair proposed invalid spec: {parsed!r} "
+                f"(allowed: {allowed})"
+            )
+            return None
+        return action, new_args
+
+    def _persist_recipe_patch(
+        self,
+        recipe: Recipe,
+        index: int,
+        new_action: str,
+        new_args: dict[str, Any],
+        run_id: str,
+    ) -> dict[str, Any] | None:
+        """Writes the successful repair back into the recipe file.
+
+        The step's ``action``/``args`` are replaced in place and an entry is
+        appended to ``recipe.patches`` so the heal is auditable — next replay
+        is deterministic again. Import of the recorder is lazy: it pulls in
+        the history/action-spec stack a zero-LLM run must not need.
+        """
+        from artemis.recipes.recorder import recipe_path
+
+        try:
+            step = recipe.steps[index]
+            patch = {
+                "ts": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "run_id": run_id,
+                "step_index": index,
+                "kind": "vision",
+                "old_action": step.action,
+                "old_args": step.args,
+                "new_action": new_action,
+                "new_args": new_args,
+            }
+            step.action, step.args = new_action, new_args
+            recipe.patches.append(patch)
+            path = recipe_path(recipe.id)
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(
+                json.dumps(
+                    recipe.model_dump(mode="json"), indent=2, ensure_ascii=False
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            tmp.replace(path)
+            logger.info(
+                f"recipe {recipe.id}: vision patch persisted at step {index} "
+                f"({patch['old_action']} -> {new_action})"
+            )
+            return patch
+        except Exception as exc:
+            logger.warning(f"Could not persist recipe patch: {exc}")
+            return None
+
+    async def _attempt_step_repair(
+        self,
+        session: Any,
+        recipe: Recipe,
+        index: int,
+        step: RecipeStep,
+        args: dict[str, Any],
+        outcome: RecipeStepResult,
+        run_id: str,
+    ) -> dict[str, Any] | None:
+        """The ``on_fail`` fallback; ``None`` means "fail the step normally".
+
+        ``"vision"``: screenshot -> one VLM call for a replacement ActionSpec ->
+        dispatch it -> persist the fix. Exactly one shot — a second failure is
+        final, keeping replay bounded and effectively deterministic.
+        """
+        if step.on_fail != "vision":
+            return None
+        from_error = outcome.error
+        try:
+            b64 = await session.screenshot_b64(timeout=10.0)
+        except Exception as exc:
+            logger.warning(f"vision repair needs a screenshot; failed: {exc}")
+            return None
+        spec = await self._propose_repair_action(b64, step, args, outcome)
+        if spec is None:
+            return None
+        action, new_args = spec
+        t_repair = time.monotonic()
+        try:
+            res = await asyncio.wait_for(
+                session.call(action, new_args),
+                timeout=max(1.0, step.timeout_ms / 1000.0),
+            )
+        except Exception as exc:
+            logger.warning(f"vision repair action {action} failed: {exc}")
+            return None
+        if not res.ok:
+            logger.warning(
+                f"vision repair action {action} was rejected: {res.message}"
+            )
+            return None
+        patch = self._persist_recipe_patch(
+            recipe, index, action, new_args, run_id
+        )
+        return {
+            "kind": "vision",
+            "action": action,
+            "args": new_args,
+            "from_error": from_error,
+            "persisted": patch is not None,
+            "elapsed_ms": int((time.monotonic() - t_repair) * 1000),
+        }
+
     # --- recording --------------------------------------------------------
 
     def _record_step(
@@ -388,6 +694,8 @@ class RecipeRunner:
         self._recipe_id = recipe.id
         session = await self._session()
         device_serial = getattr(getattr(self.ctx, "device", None), "device_id", None)
+        if device_serial:
+            ensure_workspace(device_serial)
 
         started = datetime.now().astimezone()
         t_start = time.monotonic()
@@ -399,6 +707,22 @@ class RecipeRunner:
             args = substitute_vars(step.args, merged_vars)
             outcome = RecipeStepResult(step_index=index, action=step.action, args=args)
             outcomes.append(outcome)
+
+            try:
+                args = resolve_asset_args(args, device_serial)
+                outcome.args = args
+            except (ValueError, FileNotFoundError) as exc:
+                # A bad workspace reference is an authoring error — it fails
+                # the step like any invalid argument and aborts the run.
+                outcome.error = str(exc)
+                self._record_step(step, args, outcome, None)
+                failed_index = index
+                run_error = outcome.error
+                logger.warning(
+                    f"Recipe {recipe.id} aborted at step {index} "
+                    f"({step.action}): {outcome.error}"
+                )
+                break
 
             # A wait_for_delay step legitimately outlives timeout_ms; its own
             # duration is added on top of the per-step budget.
@@ -445,9 +769,17 @@ class RecipeRunner:
 
             t0 = time.monotonic()
             try:
-                res = await asyncio.wait_for(
-                    session.call(step.action, args), timeout=max(1.0, budget_ms / 1000.0)
-                )
+                if step.action == "inject_file":
+                    # Runner-side staging action: adb push from the device
+                    # workspace (see _inject_file); not an MCP tool.
+                    res = await asyncio.wait_for(
+                        self._inject_file(args, device_serial),
+                        timeout=max(1.0, budget_ms / 1000.0),
+                    )
+                else:
+                    res = await asyncio.wait_for(
+                        session.call(step.action, args), timeout=max(1.0, budget_ms / 1000.0)
+                    )
                 outcome.success, outcome.error = res.ok, (None if res.ok else res.message)
             except TimeoutError:
                 outcome.success = False
@@ -480,6 +812,37 @@ class RecipeRunner:
             elif step.assert_after is not None:
                 outcome.assert_passed = None
 
+            if not outcome.success and step.on_fail:
+                repair = await self._attempt_step_repair(
+                    session, recipe, index, step, args, outcome, run_id
+                )
+                if repair is not None:
+                    outcome.repaired = True
+                    outcome.repair = repair
+                    outcome.success = True
+                    outcome.elapsed_ms += int(repair.get("elapsed_ms") or 0)
+                    if step.assert_after:
+                        # The repair changed the screen: re-check once so a
+                        # required assert validates the repaired state too.
+                        t_assert = time.monotonic()
+                        passed, assert_err, shot_name, shot_bytes = (
+                            await self._check_assert(
+                                session, step, run_id, index, merged_vars
+                            )
+                        )
+                        outcome.elapsed_ms += int(
+                            (time.monotonic() - t_assert) * 1000
+                        )
+                        outcome.assert_passed = passed
+                        outcome.post_screenshot_name = shot_name
+                        if not passed:
+                            outcome.error = (
+                                "assert_after still failing after repair:"
+                                f" {assert_err}"
+                            )
+                            if (step.assert_after or {}).get("required"):
+                                outcome.success = False
+
             self._record_step(step, args, outcome, shot_bytes)
 
             if not outcome.success:
@@ -491,7 +854,7 @@ class RecipeRunner:
                 break
 
         finished = datetime.now().astimezone()
-        return RecipeRunResult(
+        result = RecipeRunResult(
             run_id=run_id,
             recipe_id=recipe.id,
             recipe_name=recipe.name,
@@ -511,3 +874,6 @@ class RecipeRunner:
             variables=merged_vars,
             steps=outcomes,
         )
+        if device_serial:
+            append_memory(device_serial, memory_line(recipe.name or recipe.id, result))
+        return result

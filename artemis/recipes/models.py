@@ -75,6 +75,13 @@ class RecipeStep(BaseModel):
     failed check is recorded (``assert_passed: false``) and the run continues
     unless the spec sets ``"required": true``."""
 
+    on_fail: str | None = None
+    """Opt-in fallback when the step's action or ``required`` assert fails.
+    ``"vision"`` asks the configured VLM (one bounded call) for a single
+    replacement ActionSpec, executes it, and persists the fix into the recipe
+    file. ``None`` (the default) keeps replay strictly deterministic — no LLM.
+    """
+
     timeout_ms: int = 15000
     """Per-step budget: bounds the action call and the ``assert_after`` check."""
 
@@ -104,6 +111,11 @@ class Recipe(BaseModel):
     skipped: list[dict[str, Any]] = Field(default_factory=list)
     """Recorded actions deliberately left out (failed, non-device, unreplayable)."""
 
+    patches: list[dict[str, Any]] = Field(default_factory=list)
+    """Repair log: entries appended when an ``on_fail`` lane rewrote a step in
+    place (``{ts, run_id, step_index, kind, old_action, old_args, new_action,
+    new_args}``) — the audit trail for self-healing recipes."""
+
     tags: list[str] = Field(default_factory=list)
 
     @field_validator("id")
@@ -131,6 +143,12 @@ class RecipeStepResult(BaseModel):
     """``None`` when the step declares no ``precondition``."""
     assert_passed: bool | None = None
     """``None`` when the step declares no ``assert_after``."""
+
+    repaired: bool = False
+    """``True`` when an ``on_fail`` fallback recovered this step."""
+    repair: dict[str, Any] | None = None
+    """What the fallback lane dispatched, e.g. ``{"kind": "vision", "action":
+    "click", "args": {...}, "from_error": "..."}``."""
 
     post_screenshot_name: str | None = None
     """Image record name / shot filename when an assert captured a screenshot."""

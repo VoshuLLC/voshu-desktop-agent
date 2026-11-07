@@ -364,7 +364,7 @@
                         <div class="fl-sect">ADB shell</div>
                         <div class="fl-goalrow"><input id="fl-d-cmd" placeholder="pm list packages"><button class="fl-btn ghost sm" id="fl-d-sh">▶</button></div>
                         <div class="fl-sect">Recipes</div>
-                        <div class="fl-goalrow"><select id="fl-d-recipe" style="flex:1;min-width:0"></select><button class="fl-btn sm" id="fl-d-recipe-run">Run</button></div>
+                        <div class="fl-goalrow"><select id="fl-d-recipe" style="flex:1;min-width:0"></select><select id="fl-d-recipe-target" title="Run target"><option value="">this device</option><option value="auto">auto (free emu)</option><option value="all">all free emus</option></select><button class="fl-btn sm" id="fl-d-recipe-run">Run</button></div>
                         <div class="fl-log" id="fl-d-log"></div>
                         <div class="fl-sect">Danger zone</div>
                         <div style="display:flex;gap:8px"><button class="fl-btn ghost sm" id="fl-d-reboot">Reboot</button><button class="fl-btn danger sm" id="fl-d-del">Destroy clone</button></div>
@@ -4079,11 +4079,14 @@
       }
       recipeSel.addEventListener('pointerdown', loadRecipes);
       F$('#fl-d-recipe-run').onclick = async ()=>{
-        const id = recipeSel.value; if(!id||!fleet.selected) return;
+        const id = recipeSel.value; if(!id) return;
+        const target = (F$('#fl-d-recipe-target')||{}).value || '';
+        if(!target && !fleet.selected) return;
         try{
-          flog('▶ recipe '+id,'p');
-          const r = await fapi(`/api/recipes/${id}/run`,{device_serial:fleet.selected.serial});
-          flog(`recipe run ${(r.run_id||'').slice(0,8)} ${r.status||'queued'}`);
+          flog('▶ recipe '+id+(target?' on '+target:''),'p');
+          const r = await fapi(`/api/recipes/${id}/run`,{device_serial:target||fleet.selected.serial});
+          if(r.runs){ flog(`recipe spawned ${r.spawned||r.runs.length} run(s) on ${target}`); }
+          else flog(`recipe run ${(r.run_id||'').slice(0,8)} ${r.status||'queued'}`);
         }catch(e){ flog('recipe run failed: '+e.message,'e'); }
       };
       loadRecipes();

@@ -1,8 +1,11 @@
 """Fleet device registry — persisted state for every managed endpoint.
 
 Kinds: "avd" (cloned emulator), "physical" (usb/network phone), "remote"
-(tailnet adb endpoint — future redroid hosts). AVD clones register their
-emulator-<port> serial once booted; the registry survives daemon restarts.
+(tailnet adb endpoint — future redroid hosts), "mac" / "win" (externally
+enrolled desktop hosts driven by an in-guest agent daemon — see
+artemis/fleet/agentd.py and artemis/desktop/macagentd.py). AVD clones
+register their emulator-<port> serial once booted; desktops register via
+POST /api/fleet/enroll. The registry survives daemon restarts.
 """
 
 import asyncio
@@ -15,13 +18,18 @@ from pathlib import Path
 FLEET_DIR = Path(os.environ.get("ARTEMIS_FLEET_DIR", "traces/fleet"))
 REGISTRY_FILE = FLEET_DIR / "devices.json"
 
+# Desktop kinds are agent-driven (HTTP agentd), not adb-driven. sync_adb()
+# leaves them alone; agentd.sync_agents() health-polls their `host` field.
+AGENT_KINDS = ("mac", "win", "linux")
+
 
 @dataclass
 class FleetDevice:
-    id: str                      # stable id, e.g. "emu-01", "pixel-6"
+    id: str                      # stable id, e.g. "emu-01", "pixel-6", "mac-studio"
     name: str                    # display name
-    serial: str                  # adb serial: emulator-5556 / host:port / usb id
-    kind: str                    # avd | physical | remote
+    serial: str                  # addressing key: adb serial / host:port / agentd slug
+    kind: str                    # avd | physical | remote | mac | win
+    host: str | None = None      # agentd base URL for mac/win, e.g. http://127.0.0.1:7778
     status: str = "booting"      # booting | free | busy | draining | dead | offline
     avd_name: str | None = None  # AVD name when kind=avd
     golden_rev: str | None = None
