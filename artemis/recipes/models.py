@@ -60,9 +60,20 @@ class RecipeStep(BaseModel):
     args: dict[str, Any] = Field(default_factory=dict)
     """Wire-dialect arguments; string values may hold ``{{var}}`` placeholders."""
 
+    precondition: dict[str, Any] | None = None
+    """Optional pre-action gate through the same actuation channel:
+    ``{"type": "launch_app", "package": "<pkg>"}`` foregrounds the app,
+    ``{"type": "wait_for_text", "text": "...", "timeout_ms": ...}`` blocks until
+    a string is on screen, and ``{"type": "if_text_then_tap", "text": "...",
+    "timeout_ms": ...}`` taps the matching element only when it appears — the
+    conditional onboarding-dismiss hook; an absent match is never a failure.
+    ``package``/``text`` values take ``{{var}}``."""
+
     assert_after: dict[str, Any] | None = None
     """Optional post-action check, e.g. ``{"type": "text_present", "text": "..."}``
-    or ``{"type": "screenshot"}``. ``text`` values also take ``{{var}}``."""
+    or ``{"type": "screenshot"}``. ``text`` values also take ``{{var}}``. A
+    failed check is recorded (``assert_passed: false``) and the run continues
+    unless the spec sets ``"required": true``."""
 
     timeout_ms: int = 15000
     """Per-step budget: bounds the action call and the ``assert_after`` check."""
@@ -116,6 +127,8 @@ class RecipeStepResult(BaseModel):
     success: bool = False
     error: str | None = None
     elapsed_ms: int = 0
+    precondition_passed: bool | None = None
+    """``None`` when the step declares no ``precondition``."""
     assert_passed: bool | None = None
     """``None`` when the step declares no ``assert_after``."""
 

@@ -1,8 +1,9 @@
 """Recipes API — record-once deterministic replay for the admin console.
 
 GET    /api/recipes                  list saved recipes
-POST   /api/recipes/from-session     {session_id, recipe_id, name?, tags?, param_hints?} -> build + save
+POST   /api/recipes/from-session     {session_id, recipe_id, name?, tags?, param_hints?, app_package?} -> build + save
 GET    /api/recipes/{id}             full recipe JSON
+PUT    /api/recipes/{id}             replace recipe with a validated body (hand edits)
 DELETE /api/recipes/{id}             remove recipe file
 POST   /api/recipes/{id}/run         {device_serial?, variables?, profile?} -> queue a replay
 GET    /api/recipes/runs/{run_id}    persisted RecipeRunResult / live run record
@@ -28,7 +29,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from artemis.config import WORKSPACE_ROOT
-from artemis.recipes.models import is_valid_recipe_id
+from artemis.recipes.models import Recipe, is_valid_recipe_id
 from artemis.recipes.recorder import (
     RECIPE_RUNS_DIR,
     RecipeRecorder,
@@ -385,6 +386,8 @@ class FromSessionRequest(BaseModel):
     name: str | None = None
     tags: list[str] | None = None
     param_hints: dict[str, Any] | None = None
+    app_package: str | None = None
+    """When set, the recipe opens with a ``launch_app`` precondition step."""
 
 
 @router.post("/api/recipes/from-session")
@@ -400,6 +403,7 @@ async def create_recipe_from_session(req: FromSessionRequest):
             req.param_hints,
             req.name,
             req.tags,
+            req.app_package,
         )
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from None
@@ -421,6 +425,22 @@ async def get_recipe_run(run_id: str):
 @router.get("/api/recipes/{recipe_id}")
 async def get_recipe(recipe_id: str):
     return _load_or_404(recipe_id).model_dump(mode="json")
+
+
+@router.put("/api/recipes/{recipe_id}")
+async def update_recipe(recipe_id: str, recipe: Recipe):
+    """Replaces a recipe wholesale — the hand-edit path (preconditions, asserts).
+
+    The body must be a complete recipe; FastAPI/pydantic validation rejects a
+    malformed one with 422 before anything touches disk.
+    """
+    _load_or_404(recipe_id)
+    if recipe.id != recipe_id:
+        raise HTTPException(
+            400, f"recipe id mismatch: path {recipe_id!r} vs body {recipe.id!r}"
+        )
+    path = await run_in_threadpool(RecipeRecorder().save, recipe)
+    return {"ok": True, "recipe": _recipe_summary(recipe), "path": str(path)}
 
 
 @router.delete("/api/recipes/{recipe_id}")

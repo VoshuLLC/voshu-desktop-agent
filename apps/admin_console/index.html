@@ -363,6 +363,8 @@
                         <div class="fl-keys" id="fl-d-keys"></div>
                         <div class="fl-sect">ADB shell</div>
                         <div class="fl-goalrow"><input id="fl-d-cmd" placeholder="pm list packages"><button class="fl-btn ghost sm" id="fl-d-sh">▶</button></div>
+                        <div class="fl-sect">Recipes</div>
+                        <div class="fl-goalrow"><select id="fl-d-recipe" style="flex:1;min-width:0"></select><button class="fl-btn sm" id="fl-d-recipe-run">Run</button></div>
                         <div class="fl-log" id="fl-d-log"></div>
                         <div class="fl-sect">Danger zone</div>
                         <div style="display:flex;gap:8px"><button class="fl-btn ghost sm" id="fl-d-reboot">Reboot</button><button class="fl-btn danger sm" id="fl-d-del">Destroy clone</button></div>
@@ -428,6 +430,7 @@
             <div style="margin-left: auto; display: flex; gap: 8px;">
                 <button class="refresh-btn" style="margin-bottom: 0; background-color: #38bdf8; color: #0f172a; font-weight: bold;" onclick="openNotesModal()">📚 View All Notes</button>
                 <button class="refresh-btn" style="margin-bottom: 0; background-color: #38bdf8; color: #0f172a; font-weight: bold;" onclick="openPlanModal()">📋 View Task Plan</button>
+                <button class="refresh-btn" style="margin-bottom: 0; background-color: #f6ad55; color: #0f172a; font-weight: bold;" onclick="recordRecipeFromSession()">📼 Record recipe</button>
             </div>
         </div>
         
@@ -4059,6 +4062,41 @@
       F$('#fl-d-del').onclick=async()=>{
         const d=fleet.selected; if(!confirm(`Destroy ${d.id}? The clone is deleted; the golden image is untouched.`))return;
         try{ const r=await fetch(`/api/fleet/devices/${d.id}`,{method:'DELETE'}); if(r.ok){ftoast('destroyed '+d.id);F$('#fl-d-close').click()}else ftoast('destroy failed',true)}catch(e){ftoast(e.message,true)}
+      };
+
+      /* ---- recipes: run a saved recipe on the selected device ---- */
+      const recipeSel = F$('#fl-d-recipe');
+      async function loadRecipes(){
+        try{
+          const d = await fapi('/api/recipes');
+          const rs = d.recipes||[];
+          const cur = recipeSel.value;
+          recipeSel.innerHTML = rs.length
+            ? rs.map(r=>`<option value="${fesc(r.id)}">${fesc(r.name||r.id)} · ${r.steps} steps</option>`).join('')
+            : '<option value="">— no recipes —</option>';
+          if (cur && rs.some(r=>r.id===cur)) recipeSel.value = cur;
+        }catch(e){ recipeSel.innerHTML = '<option value="">recipes unavailable</option>'; }
+      }
+      recipeSel.addEventListener('pointerdown', loadRecipes);
+      F$('#fl-d-recipe-run').onclick = async ()=>{
+        const id = recipeSel.value; if(!id||!fleet.selected) return;
+        try{
+          flog('▶ recipe '+id,'p');
+          const r = await fapi(`/api/recipes/${id}/run`,{device_serial:fleet.selected.serial});
+          flog(`recipe run ${(r.run_id||'').slice(0,8)} ${r.status||'queued'}`);
+        }catch(e){ flog('recipe run failed: '+e.message,'e'); }
+      };
+      loadRecipes();
+
+      /* Sessions view header button — mine the open session into a recipe. */
+      window.recordRecipeFromSession = async ()=>{
+        if (typeof currentSessionId==='undefined'||!currentSessionId){ ftoast('select a session first',true); return; }
+        const recipe_id = (prompt('Recipe id (slug):')||'').trim(); if(!recipe_id) return;
+        const app_package = (prompt('App package to launch first (optional, e.g. com.google.android.apps.maps):')||'').trim();
+        try{
+          const r = await fapi('/api/recipes/from-session',{session_id:currentSessionId,recipe_id,app_package:app_package||undefined});
+          ftoast(`recipe '${(r.recipe&&r.recipe.id)||recipe_id}' saved — ${(r.recipe&&r.recipe.steps)||0} steps`);
+        }catch(e){ ftoast('record failed: '+e.message,true); }
       };
 
       async function prov(n){try{ftoast('provisioning '+n+' device'+(n>1?'s':'')+' — cloning golden…');const r=await fapi('/api/fleet/provision',{count:n});(r.results||[]).forEach(x=>ftoast(x.ok?`${x.id} online @ ${x.serial}`:`${x.id||'clone'} failed: ${x.error}`,!x.ok));if(r.created_golden)ftoast('golden baseline created');}catch(e){ftoast(e.message,true)}refreshFleet()}

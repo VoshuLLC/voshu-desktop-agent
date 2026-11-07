@@ -18,9 +18,18 @@
 action session the Validator uses: each step's ``action``/``args`` is already
 the canonical ``(tool_name, wire_args)`` pair ``exec_action`` resolves via
 ``to_canonical_call``, so the runner's dispatch is a plain
-``session.call(action, args)`` — no precondition nets, no retries, no model.
+``session.call(action, args)`` — no retries, no model.
 A run aborts on the first failed step: replay is deterministic only while the
 device still matches the recording, and a failed action leaves it unknown.
+
+Before a step's action an optional ``precondition`` runs through the same
+channel: ``launch_app`` foregrounds a package and ``wait_for_text`` blocks on
+a screen string (either failure aborts the step — the recorded coordinates
+mean nothing without that state), while ``if_text_then_tap`` is a conditional
+dismiss that taps the text's element when present and otherwise continues
+silently (first-run onboarding is the target). After the action an
+``assert_after`` check is recorded in the step result; a failed check only
+aborts the run when the spec declares ``"required": true``.
 
 Per-step ``timeout_ms`` wraps the call in ``asyncio.wait_for``: abandoning the
 caller future is safe here (the transport call completes inside the session's
@@ -35,6 +44,7 @@ import base64
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 import time
 from typing import Any
 import uuid
@@ -57,6 +67,9 @@ __all__ = ["RecipeRunner"]
 #: ``recorder.RECIPE_RUNS_DIR`` on purpose: importing the recorder pulls in the
 #: history/action-spec stack (langchain), which a zero-LLM runner must not need.
 _RUN_SHOTS_DIR = Path(TRACES_PATH) / "recipes" / "runs" / "shots"
+
+#: ``[x1,y1][x2,y2]`` pixel bounds on a hierarchy element.
+_BOUNDS_RE = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 
 
 def substitute_vars(value: Any, variables: dict[str, Any]) -> Any:
@@ -96,6 +109,158 @@ class RecipeRunner:
 
             session = await get_action_session(self.ctx)
         return session
+
+    # --- preconditions ------------------------------------------------------
+
+    def _device_dims(self) -> tuple[int, int]:
+        device = getattr(self.ctx, "device", None)
+        width = getattr(device, "device_width", 1080) if device else 1080
+        height = getattr(device, "device_height", 2400) if device else 2400
+        return width or 1080, height or 2400
+
+    @staticmethod
+    def _element_bounds(elem: dict[str, Any]) -> tuple[int, int, int, int] | None:
+        """Pixel ``(x1, y1, x2, y2)`` for one hierarchy element, or None."""
+        parsed = elem.get("parsed_bounds")
+        if isinstance(parsed, dict):
+            try:
+                return (
+                    int(parsed["left"]),
+                    int(parsed["top"]),
+                    int(parsed["right"]),
+                    int(parsed["bottom"]),
+                )
+            except (KeyError, TypeError, ValueError):
+                pass
+        bounds = elem.get("bounds")
+        if isinstance(bounds, str):
+            match = _BOUNDS_RE.match(bounds)
+            if match:
+                return tuple(map(int, match.groups()))
+        return None
+
+    def _find_text_element(
+        self, elements: Any, needle: str
+    ) -> tuple[int, int] | None:
+        """Pixel center of the best element carrying ``needle`` (case-insensitive).
+
+        Matches ``text``/``content-desc`` and prefers clickable elements, then
+        the smallest bounds — the leaf-most match, so a label inside a button
+        wins over the window container.
+        """
+        low = needle.lower()
+        best: tuple[int, int, int, int] | None = None  # (rank, area, cx, cy)
+        for elem in elements or []:
+            if not isinstance(elem, dict):
+                continue
+            haystacks = (
+                elem.get("text"),
+                elem.get("content-desc"),
+                elem.get("accessibilityText"),
+            )
+            if not any(low in str(h).lower() for h in haystacks if h):
+                continue
+            bounds = self._element_bounds(elem)
+            if bounds is None:
+                continue
+            x1, y1, x2, y2 = bounds
+            area = max(0, x2 - x1) * max(0, y2 - y1)
+            rank = 0 if str(elem.get("clickable")) == "true" else 1
+            candidate = (rank, area, (x1 + x2) // 2, (y1 + y2) // 2)
+            if best is None or candidate[:2] < best[:2]:
+                best = candidate
+        return (best[2], best[3]) if best else None
+
+    async def _tap_text(self, session: Any, text: str, timeout_ms: int) -> bool:
+        """Polls the hierarchy for ``text`` and taps its element when found.
+
+        Returns ``True`` once a tap dispatches; ``False`` when the deadline
+        passes with no match — the element may simply never appear (e.g. the
+        app was already past onboarding), which callers treat as "nothing to
+        dismiss" rather than an error.
+        """
+        deadline = time.monotonic() + max(0.0, timeout_ms / 1000.0)
+        width, height = self._device_dims()
+        while True:
+            try:
+                elements = await session.ui_hierarchy(timeout=5.0)
+            except Exception as exc:
+                logger.debug(f"hierarchy poll failed during if_text_then_tap: {exc}")
+                elements = []
+            center = self._find_text_element(elements, text)
+            if center is not None:
+                nx = max(0, min(1000, round(center[0] * 1000 / width)))
+                ny = max(0, min(1000, round(center[1] * 1000 / height)))
+                try:
+                    res = await session.call("click", {"target": [nx, ny]})
+                except Exception as exc:
+                    res = None
+                    logger.debug(f"if_text_then_tap tap call raised: {exc}")
+                if res is not None and res.ok:
+                    logger.info(
+                        f"if_text_then_tap dismissed '{text}' at [{nx}, {ny}]"
+                    )
+                    return True
+                logger.warning(
+                    f"if_text_then_tap tap on '{text}' failed"
+                    f" ({getattr(res, 'message', None)}); retrying until deadline"
+                )
+            if time.monotonic() >= deadline:
+                return False
+            await asyncio.sleep(0.5)
+
+    async def _check_precondition(
+        self,
+        session: Any,
+        step: RecipeStep,
+        variables: dict[str, Any],
+    ) -> tuple[bool, str | None]:
+        """Evaluates one ``precondition``; returns (passed, error).
+
+        ``launch_app``/``wait_for_text`` report real failures (the caller
+        aborts the step — recorded coordinates mean nothing without that
+        state); ``if_text_then_tap`` is a conditional dismiss and always
+        reports ``True`` once evaluated.
+        """
+        spec = step.precondition or {}
+        kind = str(spec.get("type") or "")
+        timeout_ms = int(spec.get("timeout_ms") or step.timeout_ms)
+
+        if kind == "launch_app":
+            package = substitute_vars(
+                str(spec.get("package") or spec.get("app_name") or ""), variables
+            )
+            if not package:
+                return False, "launch_app precondition missing 'package'"
+            res = await session.call(
+                "manage_app", {"action": "launch", "app_name": package}
+            )
+            return (res.ok, None if res.ok else res.message)
+
+        if kind == "wait_for_text":
+            text = substitute_vars(str(spec.get("text") or ""), variables)
+            if not text:
+                return False, "wait_for_text precondition missing 'text'"
+            res = await session.call(
+                "wait_for_text",
+                {
+                    "text": text,
+                    "wait_state": str(spec.get("wait_state") or "appear"),
+                    "timeout_ms": timeout_ms,
+                },
+            )
+            return (res.ok, None if res.ok else res.message)
+
+        if kind == "if_text_then_tap":
+            text = substitute_vars(str(spec.get("text") or ""), variables)
+            if not text:
+                return False, "if_text_then_tap precondition missing 'text'"
+            tapped = await self._tap_text(session, text, timeout_ms)
+            if not tapped:
+                logger.debug(f"if_text_then_tap: '{text}' not on screen; continuing")
+            return True, None
+
+        return False, f"unknown precondition type: {kind!r}"
 
     # --- asserts ---------------------------------------------------------
 
@@ -212,7 +377,8 @@ class RecipeRunner:
         variables: dict[str, Any] | None = None,
         run_id: str | None = None,
     ) -> RecipeRunResult:
-        """Replays every step in order; aborts on the first failed step/assert.
+        """Replays every step in order; aborts on the first failed step,
+        failed precondition, or failed ``required`` assert.
 
         ``run_id`` lets the caller pin the result's id (the worker passes the
         session/run id so the daemon can find the persisted result file).
@@ -239,6 +405,44 @@ class RecipeRunner:
             budget_ms = step.timeout_ms + (
                 int(args.get("time_in_ms") or 0) if step.action == "wait_for_delay" else 0
             )
+
+            if step.precondition:
+                spec = step.precondition
+                # Generous outer bound: spec timeouts get a poll margin, and a
+                # launching app may need launch_app_with_retries' full ~45s.
+                pre_budget_ms = max(
+                    budget_ms, int(spec.get("timeout_ms") or 0) + 15_000
+                )
+                if str(spec.get("type") or "") == "launch_app":
+                    pre_budget_ms = max(pre_budget_ms, 60_000)
+                t_pre = time.monotonic()
+                try:
+                    pre_ok, pre_err = await asyncio.wait_for(
+                        self._check_precondition(session, step, merged_vars),
+                        timeout=max(1.0, pre_budget_ms / 1000.0),
+                    )
+                except TimeoutError:
+                    pre_ok, pre_err = (
+                        False,
+                        f"precondition timed out after {pre_budget_ms}ms "
+                        "(device call may still be in flight; aborting run)",
+                    )
+                except Exception as exc:
+                    pre_ok, pre_err = False, str(exc)
+                outcome.elapsed_ms += int((time.monotonic() - t_pre) * 1000)
+                outcome.precondition_passed = pre_ok
+                if not pre_ok:
+                    outcome.success = False
+                    outcome.error = f"precondition failed: {pre_err}"
+                    self._record_step(step, args, outcome, None)
+                    failed_index = index
+                    run_error = outcome.error
+                    logger.warning(
+                        f"Recipe {recipe.id} aborted at step {index} "
+                        f"({step.action}): {outcome.error}"
+                    )
+                    break
+
             t0 = time.monotonic()
             try:
                 res = await asyncio.wait_for(
@@ -254,7 +458,7 @@ class RecipeRunner:
             except Exception as exc:
                 outcome.success = False
                 outcome.error = str(exc)
-            outcome.elapsed_ms = int((time.monotonic() - t0) * 1000)
+            outcome.elapsed_ms += int((time.monotonic() - t0) * 1000)
 
             shot_name: str | None = None
             shot_bytes: bytes | None = None
@@ -267,8 +471,12 @@ class RecipeRunner:
                 outcome.assert_passed = passed
                 outcome.post_screenshot_name = shot_name
                 if not passed:
-                    outcome.success = False
+                    # A failed check is evidence, not (by default) a crash —
+                    # the action still dispatched, so the run continues unless
+                    # the spec declared this assert required.
                     outcome.error = f"assert_after failed: {assert_err}"
+                    if (step.assert_after or {}).get("required"):
+                        outcome.success = False
             elif step.assert_after is not None:
                 outcome.assert_passed = None
 

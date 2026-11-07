@@ -328,8 +328,15 @@ class RecipeRecorder:
         param_hints: dict[str, Any] | None = None,
         name: str | None = None,
         tags: list[str] | None = None,
+        app_package: str | None = None,
     ) -> Recipe:
-        """Extracts the successful device actions of ``session_id`` into a recipe."""
+        """Extracts the successful device actions of ``session_id`` into a recipe.
+
+        ``app_package`` prepends a ``launch_app`` precondition step so a replay
+        on a fresh device opens the target app before the recorded coordinates
+        land — first-run surfaces (onboarding, sign-in walls) then belong to
+        the recipe's hand-edited ``if_text_then_tap`` gates.
+        """
         session_id = str(session_id)
         steps, device_info = self._session_steps(session_id)
 
@@ -372,6 +379,17 @@ class RecipeRecorder:
                         description=_describe(item),
                     )
                 )
+
+        if app_package:
+            recipe_steps.insert(
+                0,
+                RecipeStep(
+                    action="wait_for_delay",
+                    args={"time_in_ms": 2000},
+                    precondition={"type": "launch_app", "package": app_package},
+                    description=f"Precondition: launch {app_package} and settle",
+                ),
+            )
 
         device_constraints = {
             k: device_info[k]
