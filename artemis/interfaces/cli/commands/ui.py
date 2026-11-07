@@ -297,7 +297,7 @@ def ui_command(
         ),
     ] = False,
 ) -> None:
-    """Launch the unified Artemis Showcase UI & Admin Console in one click."""
+    """Launch the unified Voshu Device Control Showcase UI & Admin Console in one click."""
     console = Console()
     local_url = f"http://localhost:{port}"
 
@@ -316,7 +316,7 @@ def ui_command(
         pid_str = f" (PID: {', '.join(map(str, pids))})" if pids else ""
         if sys.stdin.isatty():
             console.print(
-                f"\n   [yellow]⚠ Port {port} is already in use by an active Artemis server{pid_str}.[/yellow]"
+                f"\n   [yellow]⚠ Port {port} is already in use by an active Voshu Device Control server{pid_str}.[/yellow]"
             )
             console.print("   [dim]Choose an action:[/dim]")
             console.print("     [bold]1[/bold] Open browser (default)")
@@ -328,7 +328,7 @@ def ui_command(
                 choice = "1"
             if choice == "2":
                 console.print(
-                    f"\n   [yellow]🔄 Terminating previous Artemis instance on port {port}...[/yellow]"
+                    f"\n   [yellow]🔄 Terminating previous Voshu Device Control instance on port {port}...[/yellow]"
                 )
                 load_session_reconciler()
                 stop_server(port=port, timeout=12.0)
@@ -340,7 +340,7 @@ def ui_command(
                 return
         else:
             console.print(
-                f"\n   [yellow]⚠ Port {port} is already in use by Artemis{pid_str}. "
+                f"\n   [yellow]⚠ Port {port} is already in use by Voshu Device Control{pid_str}. "
                 f"Use '[bold]artemis restart[/bold]' to restart.[/yellow]\n"
             )
             if open_browser:
@@ -349,7 +349,7 @@ def ui_command(
 
     console.print()
     msg = (
-        f"[bold cyan]✨ Artemis Autonomous Mobile Agent UI[/bold cyan]\n\n"
+        f"[bold cyan]✨ Voshu Device Control[/bold cyan] [dim](Artemis engine)[/dim]\n\n"
         f"📱 [bold green]Showcase UI & Onboarding:[/bold green] [cyan]{local_url}[/cyan]\n"
         f"🛠️ [bold magenta]Admin Debug Console:[/bold magenta]     [cyan]{local_url}/admin[/cyan]\n"
         f"📖 [dim]API Documentation:[/dim]         [dim]{local_url}/docs[/dim]\n\n"

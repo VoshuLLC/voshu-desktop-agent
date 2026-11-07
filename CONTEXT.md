@@ -33,6 +33,19 @@ unified workspace, `/fleet` standalone wall).
 
 ## What was done
 
+- 2026-11-07 ~07:15 ET — White-label layer "Voshu Device Control" (uncommitted,
+  devin): `apps/admin_console/BRAND.json` {name, short, tagline, accent} +
+  `routers/brand.py` `GET /api/brand` (60s cache, defaults fallback, verified
+  200 in-process). Visible strings swapped in `index.html` (title + fleet
+  brand), `fleet.html` (title + brand), showcase src + live `dist/` bundle
+  (title + 6 wizard strings — dist is gitignored, served per-request so it is
+  already live), server.py FastAPI title/fallback/argparse, CLI `main.py` +
+  `commands/ui.py` help/banner strings → "Voshu Device Control (Artemis
+  engine)". Fixed latent bug: try-branch router import in server.py was
+  missing `recipes` (NameError path if that branch ever fully ran). Identity
+  kept: package/module/route paths, `artemis` command, `artemis ui`, helper
+  APK, ARTEMIS_* env vars, UA string. NOT rebranded: doctor/init/helper/batch
+  command internals, code comments/docstrings referencing the Artemis engine.
 - 2026-11-07 ~06:30 ET — Desktop fleet member `kind:"mac"` shipped (uncommitted,
   devin): `artemis/desktop/macagentd.py` — stdlib-only HTTP agent on
   127.0.0.1:7778 (system python3, zero pip deps): `screencapture`→PNG/JPEG +
@@ -86,6 +99,10 @@ unified workspace, `/fleet` standalone wall).
 
 ## Open threads
 
+- White-label: `/api/brand` route + FastAPI title + CLI help land on next
+  daemon restart; HTML/dist branding already live (files read per request).
+  Deeper CLI surface (doctor/init/helper banners) still says Artemis — open
+  scope if full rebrand wanted.
 - Recipes v1.1+v1.2 landed (uncommitted diff): precondition steps + required-
   flagged asserts + `PUT /api/recipes/{id}` + console UI + workspaces/inject/
   auto-all/vision-repair. Daemon restart needed for the new routes + `auto`/

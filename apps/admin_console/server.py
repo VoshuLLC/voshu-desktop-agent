@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Artemis Admin & Trace Console Server
+"""Voshu Device Control (Artemis engine) — Admin & Trace Console Server
 
 Modular entrypoint for full trace inspection, step replay, and task execution management.
 """
@@ -77,7 +77,18 @@ try:
     from admin_console.database.repositories.session_repository import session_repo
     from admin_console.database.repositories.step_repository import step_repo
     from admin_console.database.repositories.trace_repository import trace_repo
-    from admin_console.routers import fleet, media, replay, sessions, steps, stream, system, tasks
+    from admin_console.routers import (
+        brand,
+        fleet,
+        media,
+        recipes,
+        replay,
+        sessions,
+        steps,
+        stream,
+        system,
+        tasks,
+    )
     from admin_console.routers.replay import replay_manager
     from admin_console.services.ipc_service import ipc_service
     from admin_console.services.media_service import media_service
@@ -87,7 +98,18 @@ except ImportError:
     from apps.admin_console.core.security import SameOriginBoundaryMiddleware
     from apps.admin_console.core.state import state
     from apps.admin_console.database.repositories.session_repository import session_repo
-    from apps.admin_console.routers import fleet, media, recipes, replay, sessions, steps, stream, system, tasks
+    from apps.admin_console.routers import (
+        brand,
+        fleet,
+        media,
+        recipes,
+        replay,
+        sessions,
+        steps,
+        stream,
+        system,
+        tasks,
+    )
     from apps.admin_console.routers.replay import replay_manager
     from apps.admin_console.services.ipc_service import ipc_service
     from apps.admin_console.services.model_service import model_service
@@ -108,7 +130,7 @@ async def _lifespan(_app: "FastAPI"):
 
 
 # Initialize FastAPI application
-app = FastAPI(title="Artemis Admin & Trace Console", lifespan=_lifespan)
+app = FastAPI(title="Voshu Device Control (Artemis engine)", lifespan=_lifespan)
 LIFECYCLE_TOKEN = os.environ.get("ARTEMIS_LIFECYCLE_TOKEN") or secrets.token_urlsafe(32)
 app.state.lifecycle_token = LIFECYCLE_TOKEN
 
@@ -218,6 +240,7 @@ async def on_shutdown():
 
 # Mount modular routers
 app.include_router(stream.router)
+app.include_router(brand.router)
 app.include_router(fleet.router)
 app.include_router(recipes.router)
 app.include_router(media.router)
@@ -341,7 +364,7 @@ async def serve_showcase_spa(full_path: str):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Artemis Showcase UI - Not Built</title>
+    <title>Voshu Device Control - UI Not Built</title>
     <style>
         body {
             font-family: system-ui, -apple-system, sans-serif;
@@ -386,7 +409,7 @@ async def serve_showcase_spa(full_path: str):
 </head>
 <body>
     <div class="card">
-        <h1>✨ Artemis Showcase UI</h1>
+        <h1>✨ Voshu Device Control</h1>
         <p>The Showcase UI (Angular frontend) has not been built yet.</p>
         <p>To compile the Showcase UI, run:</p>
         <p><code>cd apps/showcase_ui && npm install && npm run build</code></p>
@@ -493,7 +516,9 @@ def run_ui_server(host: str, port: int, reload: bool = False) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     """Parse the daemon/standalone server bind address and run Uvicorn."""
-    parser = argparse.ArgumentParser(description="Run the Artemis Admin Console server")
+    parser = argparse.ArgumentParser(
+        description="Run the Voshu Device Control (Artemis engine) admin console server"
+    )
     parser.add_argument(
         "--host",
         default=os.environ.get("ARTEMIS_SERVER_HOST", "127.0.0.1"),

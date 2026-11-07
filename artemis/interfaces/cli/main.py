@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""ARTEMIS Unified Command Line Interface (CLI)."""
+"""Voshu Device Control (Artemis engine) — Unified Command Line Interface (CLI)."""
 
 from typing import Annotated
 
@@ -40,7 +40,10 @@ logger = get_logger(__name__)
 
 app = typer.Typer(
     name="artemis",
-    help="☕ Artemis: Autonomous Multimodal Android Agent & Testing Framework.",
+    help=(
+        "☕ Voshu Device Control (Artemis engine): "
+        "Autonomous Multimodal Android Agent & Testing Framework."
+    ),
     add_completion=False,
     pretty_exceptions_enable=False,
     no_args_is_help=True,
@@ -50,9 +53,13 @@ app = typer.Typer(
 app.command(name="ui", help="Launch the unified Showcase UI & Admin Console in your browser.")(
     ui_command
 )
-app.command(name="restart", help="Restart running Artemis Web UI & server.")(restart_command)
-app.command(name="stop", help="Stop running Artemis Web UI & server.")(stop_command)
-app.command(name="status", help="Display Artemis Web UI & server status.")(status_command)
+app.command(name="restart", help="Restart running Voshu Device Control UI & server.")(
+    restart_command
+)
+app.command(name="stop", help="Stop running Voshu Device Control UI & server.")(stop_command)
+app.command(name="status", help="Display Voshu Device Control UI & server status.")(
+    status_command
+)
 app.command(name="run", help="Execute an autonomous task on a mobile device.")(run_command)
 app.command(name="init", help="Interactive quickstart wizard to configure API keys & device.")(
     init_command
@@ -74,9 +81,9 @@ def version_callback(value: bool):
         console = Console()
         console.print(
             Panel(
-                f"[bold cyan]Artemis Agent Platform[/bold cyan] v{__version__}\n"
-                "[dim]Autonomous Multimodal Mobile AI Engine[/dim]",
-                title="☕ Artemis",
+                f"[bold cyan]Voshu Device Control[/bold cyan] v{__version__}\n"
+                "[dim]Autonomous Multimodal Mobile AI Engine · Artemis engine[/dim]",
+                title="☕ Voshu",
                 expand=False,
             )
         )
@@ -90,13 +97,13 @@ def main_callback(
         typer.Option(
             "--version",
             "-v",
-            help="Show Artemis version and exit.",
+            help="Show Voshu Device Control version and exit.",
             callback=version_callback,
             is_eager=True,
         ),
     ] = False,
 ):
-    """ARTEMIS Autonomous Mobile Agent CLI."""
+    """Voshu Device Control (Artemis engine) — Autonomous Mobile Agent CLI."""
     pass
 
 

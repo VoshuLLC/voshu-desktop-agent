@@ -1056,7 +1056,7 @@
                     <div class="active-remote-copy">
                       <span class="material-symbols-outlined">hub</span>
                       <span>
-                        Artemis is currently using
+                        Voshu is currently using
                         <strong>{{ adbServerStatus()?.endpoint?.host }}:{{ adbServerStatus()?.endpoint?.port }}</strong>.
                         Switch to local ADB before using a local emulator, USB cable, or Wireless ADB.
                       </span>
@@ -1212,7 +1212,7 @@
                               </div>
                               <div class="step-card-title">Launch Emulator</div>
                               <div class="step-card-desc">
-                                Click ▶ <strong>Play</strong> in Device Manager. Artemis will detect and connect to it automatically!
+                                Click ▶ <strong>Play</strong> in Device Manager. Voshu will detect and connect to it automatically!
                               </div>
                             </div>
                           </div>
@@ -1417,7 +1417,7 @@
                   <div class="method-details-panel remote-adb-panel">
                     <div class="remote-guide-intro">
                       <span class="material-symbols-outlined intro-icon">hub</span>
-                      <span>Enter the host and port of an ADB server endpoint that this computer can access, so Artemis can discover and control a phone physically connected to another computer.</span>
+                      <span>Enter the host and port of an ADB server endpoint that this computer can access, so Voshu can discover and control a phone physically connected to another computer.</span>
                     </div>
 
                     <div class="remote-adb-interactive-box">
@@ -1481,7 +1481,7 @@
                           [ngModel]="rememberRemoteAdb()"
                           (ngModelChange)="rememberRemoteAdb.set($event)"
                         />
-                        <span>Remember this endpoint for future Artemis launches</span>
+                        <span>Remember this endpoint for future Voshu launches</span>
                       </label>
 
                       @if (remoteAdbMessage()) {
@@ -1533,7 +1533,7 @@
                     </div>
 
                     <p class="remote-adb-explanation">
-                      Artemis sends all ADB commands to this server instead of the default local server. Any phone visible to that server becomes available to Artemis.
+                      Voshu sends all ADB commands to this server instead of the default local server. Any phone visible to that server becomes available to Voshu.
                     </p>
                   </div>
                 }
