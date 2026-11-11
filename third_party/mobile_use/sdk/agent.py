@@ -1005,6 +1005,30 @@ class AgentBase:
     ) -> DeviceContext:
 
         host_platform = system()
+        # Fleet desktop devices (kind mac|win) resolve to an agentd HTTP
+        # endpoint, not adb — build their context from the fleet record.
+        try:
+            from artemis.fleet.agentd import agentd_base
+            from artemis.fleet.registry import AGENT_KINDS, fleet_registry
+
+            agent_dev = next(
+                (d for d in fleet_registry.list()
+                 if d.serial == device_id and d.kind in AGENT_KINDS),
+                None,
+            )
+            base = agentd_base(agent_dev) if agent_dev is not None else None
+        except Exception:
+            agent_dev, base = None, None
+        if base:
+            return DeviceContext(
+                host_platform=host_platform,
+                mobile_platform=DevicePlatform.DESKTOP,
+                device_id=device_id,
+                device_width=int(agent_dev.meta.get("width") or 1440),
+                device_height=int(agent_dev.meta.get("height") or 900),
+                agentd_base=base,
+                agentd_token=agent_dev.meta.get("token"),
+            )
         if os.environ.get("ARTEMIS_CLOUD_MODE") == "1":
             width, height = (1080, 2400)
             if self._adb_client:

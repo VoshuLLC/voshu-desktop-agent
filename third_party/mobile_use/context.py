@@ -50,6 +50,7 @@ class DevicePlatform(StrEnum):
     """Mobile device platform enumeration."""
 
     ANDROID = "android"
+    DESKTOP = "desktop"
 
 
 class DeviceContext(BaseModel):

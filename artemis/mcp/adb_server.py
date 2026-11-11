@@ -126,6 +126,43 @@ def _get_controller(device_serial: str | None = None):
     if not target_serial and _GLOBAL_CONTROLLER is not None:
         return _GLOBAL_CONTROLLER
 
+    # Fleet desktop devices (kind mac|win) resolve to an agentd host, not adb.
+    if target_serial:
+        try:
+            from artemis.fleet.agentd import agentd_base
+            from artemis.fleet.registry import AGENT_KINDS, fleet_registry
+
+            agent_dev = next(
+                (d for d in fleet_registry.list()
+                 if d.serial == target_serial and d.kind in AGENT_KINDS),
+                None,
+            )
+        except Exception:
+            agent_dev = None
+        if agent_dev is not None:
+            base = agentd_base(agent_dev)
+            if base:
+                logger.info(f"Initializing desktop controller for {target_serial} -> {base}")
+                w = int(agent_dev.meta.get("width") or 1440)
+                h = int(agent_dev.meta.get("height") or 900)
+                ctx = ArtemisContext(
+                    trace_id="mcp-session",
+                    device=DeviceContext(
+                        host_platform=platform.os_type.name,
+                        mobile_platform=DevicePlatform.DESKTOP,
+                        device_id=target_serial,
+                        device_width=w,
+                        device_height=h,
+                        agentd_base=base,
+                        agentd_token=agent_dev.meta.get("token"),
+                    ),
+                )
+                controller = UnifiedMobileController(ctx)
+                _CONTROLLERS[target_serial] = controller
+                if _GLOBAL_CONTROLLER is None:
+                    _GLOBAL_CONTROLLER = controller
+                return controller
+
     logger.info("Initializing lazy device controller...")
     if os.environ.get("ARTEMIS_CLOUD_MODE") == "1":
         logger.info(

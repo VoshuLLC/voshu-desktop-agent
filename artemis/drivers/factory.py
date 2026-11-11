@@ -46,7 +46,26 @@ def create_driver(ctx: "ArtemisContext") -> BaseDeviceDriver:
 
             ctx.ui_adb_client = RemoteUIAutomatorClient(adb_client=ctx.adb_client)
 
-    # 2. Mock mode check
+    # 2. Desktop mode — fleet "mac"|"win" devices carry an agentd base URL
+    # and optional token on the DeviceContext extras; the driver talks HTTP.
+    platform = str(getattr(ctx.device, "mobile_platform", "") or "").lower()
+    agentd_base = getattr(ctx.device, "agentd_base", None) or os.environ.get(
+        "ARTEMIS_DESKTOP_AGENT_URL"
+    )
+    if platform in ("desktop", "mac", "win", "windows") or agentd_base:
+        from artemis.drivers.desktop.http_driver import HttpDesktopDriver
+
+        return HttpDesktopDriver(
+            device_id=ctx.device.device_id if ctx.device else "desktop",
+            base_url=str(agentd_base),
+            token=getattr(ctx.device, "agentd_token", None)
+            or os.environ.get("MACAGENTD_TOKEN"),
+            width=ctx.device.device_width if ctx.device else 1440,
+            height=ctx.device.device_height if ctx.device else 900,
+            platform="mac" if platform == "mac" else platform or "desktop",
+        )
+
+    # 3. Mock mode check
     if (
         getattr(ctx.device, "mobile_platform", None) == "mock"
         or os.environ.get("ARTEMIS_MOCK_DRIVER") == "1"
@@ -57,7 +76,7 @@ def create_driver(ctx: "ArtemisContext") -> BaseDeviceDriver:
             height=ctx.device.device_height if ctx.device else 2400,
         )
 
-    # 3. Default Android ADB driver
+    # 4. Default Android ADB driver
     if ctx.adb_client is None:
         ctx.adb_client = AdbClient(
             host=settings.ADB_HOST or "localhost", port=settings.ADB_PORT or 5037

@@ -90,12 +90,27 @@ from artemis.runtime import shutdown_awake_service, start_awake_service
 import threading
 
 
-def main(transport: str = "stdio", host: str = "127.0.0.1", port: int = 8001):
-    """Main entrypoint to run the Artemis Mobile Agent MCP server."""
+def main(transport: str | None = None, host: str | None = None, port: int | None = None):
+    """Main entrypoint to run the Artemis Mobile Agent MCP server.
+
+    Env overrides keep `python -m mcp_server` service-friendly:
+    ARTEMIS_MCP_TRANSPORT (stdio|sse|streamable-http), ARTEMIS_MCP_HOST,
+    ARTEMIS_MCP_PORT. streamable-http is the transport Voshu Commander's
+    connector registry speaks (POST JSON-RPC + SSE-framed replies).
+    """
+    transport = (transport or os.environ.get("ARTEMIS_MCP_TRANSPORT", "stdio")).lower()
+    host = host or os.environ.get("ARTEMIS_MCP_HOST", "127.0.0.1")
+    port = int(port or os.environ.get("ARTEMIS_MCP_PORT", "8000"))
     threading.Thread(target=start_awake_service, daemon=True, name="artemis-awake-init").start()
     try:
-        if transport.lower() == "sse":
+        if transport == "sse":
             mcp.run(transport="sse", host=host, port=port)
+        elif transport in ("streamable-http", "http"):
+            # streamable-http binds from settings, not run() kwargs
+            if hasattr(mcp, "settings"):
+                mcp.settings.host = host
+                mcp.settings.port = port
+            mcp.run(transport="streamable-http")
         else:
             mcp.run(transport="stdio")
     finally:

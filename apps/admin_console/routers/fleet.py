@@ -31,7 +31,8 @@ from pydantic import BaseModel
 from artemis.toolchain import find_adb
 from artemis.recipes.workspaces import memory_pack
 from artemis.fleet.agentd import (
-    AGENT_KINDS, agentd_frame, agentd_json, agentd_stream, enroll, sync_agents,
+    AGENT_KINDS, agentd_frame, agentd_health, agentd_json, agentd_stream,
+    enroll, sync_agents,
 )
 from artemis.fleet.provisioner import (
     GOLDEN_AVD, FARM_HOME, adb_devices, destroy, ensure_golden, golden_rev,
@@ -177,9 +178,11 @@ class FleetRunRequest(BaseModel):
 async def run_on_device(device_id: str, req: FleetRunRequest):
     d = _dev(device_id)
     if d.kind in AGENT_KINDS:
-        raise HTTPException(
-            501, f"task sessions for kind {d.kind} need the HttpDesktopDriver "
-                 "(VOSHU-DEVICE-CONTROL §A.5) — input/key/shell/frame work today")
+        health = await agentd_health(d)
+        if not health.get("ok"):
+            raise HTTPException(
+                503, f"agentd for {d.serial} unreachable: "
+                     f"{health.get('error') or 'no health response'}")
     if d.status != "free":
         raise HTTPException(409, f"device is {d.status}")
     await fleet_registry.update(device_id, status="busy", task=req.goal[:160])

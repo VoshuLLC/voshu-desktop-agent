@@ -113,6 +113,35 @@ async def run_task(request: RunRequest):
                 "total_queued": len(state.queue_tasks),
             }
 
+    # Fleet desktop devices (kind mac|win) skip the Android-specific serial
+    # validation and lock probe — their admission gate is fleet enrollment.
+    if request.device_serial:
+        try:
+            from artemis.fleet.registry import AGENT_KINDS, fleet_registry
+
+            agent_dev = next(
+                (d for d in fleet_registry.list()
+                 if d.serial == request.device_serial and d.kind in AGENT_KINDS),
+                None,
+            )
+        except Exception:
+            agent_dev = None
+        if agent_dev is not None:
+            return await task_queue_service.enqueue_tasks(
+                incoming_goals,
+                profile=request.profile or "flash",
+                expected_output=request.expected_output,
+                enable_outputter=request.enable_outputter,
+                verification_level=request.verification_level,
+                explorer_mode=request.explorer_mode,
+                locked_app_package=request.locked_app_package,
+                app_path=request.app_path,
+                device_serial=request.device_serial,
+                ingress=request.ingress or "frontend",
+                session_id=request.session_id,
+                conversation_id=request.conversation_id,
+            )
+
     # Reject an explicit unknown/offline target before running the more
     # expensive readiness probe. Besides producing a stable SDK response,
     # this avoids probing the currently active device for a serial that can
