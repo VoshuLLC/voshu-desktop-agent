@@ -187,9 +187,9 @@ async def destroy(device_id: str) -> dict:
             os.kill(pid, 15)
         except ProcessLookupError:
             pass
-    for f in (FARM_HOME / f"{dev_id}.ini", FARM_HOME / f"{dev_id}.boot.log"):
+    for f in (FARM_HOME / f"{device_id}.ini", FARM_HOME / f"{device_id}.boot.log"):
         f.unlink(missing_ok=True)
-    shutil.rmtree(FARM_HOME / f"{dev_id}.avd", ignore_errors=True)
+    shutil.rmtree(FARM_HOME / f"{device_id}.avd", ignore_errors=True)
     await fleet_registry.remove(device_id)
     return {"ok": True, "id": device_id}
 
@@ -202,9 +202,9 @@ async def reboot(device_id: str) -> dict:
     await _run(find_adb(), "-s", dev.serial, "emu", "kill", timeout=10)
     await asyncio.sleep(2)
     port = int(dev.meta.get("port", FIRST_PORT))
-    log = open(FARM_HOME / f"{dev_id}.boot.log", "a")
+    log = open(FARM_HOME / f"{device_id}.boot.log", "a")
     proc = await asyncio.create_subprocess_exec(
-        str(EMULATOR), "-avd", dev.avd_name or dev_id, "-port", str(port),
+        str(EMULATOR), "-avd", dev.avd_name or dev.id, "-port", str(port),
         "-no-window", "-gpu", "swiftshader_indirect", "-no-boot-anim",
         env=_env(), stdout=log, stderr=log,
     )

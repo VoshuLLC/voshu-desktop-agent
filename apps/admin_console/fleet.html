@@ -168,7 +168,7 @@ function render(){
     <div class="dev ${d.status}" data-id="${d.id}">
       <div class="dhead"><span class="nm">${esc(d.name)}</span><span class="st ${d.status}">${d.status}</span></div>
       <div class="screen">
-        ${d.status==='dead'||d.status==='offline' ? `<div class="ph">${d.status==='dead'?'✕ device down':'○ offline'}<br><span style="font-size:10px">${esc(d.serial)}</span></div>` : `<img src="/api/fleet/devices/${d.id}/stream" loading="lazy">`}
+        ${d.status==='dead'||d.status==='offline' ? `<div class="ph">${d.status==='dead'?'✕ device down':'○ offline'}<br><span style="font-size:10px">${esc(d.serial)}</span></div>` : d.status==='booting' ? `<div class="ph">◌ booting…<br><span style="font-size:10px">${esc(d.serial)}</span></div>` : `<img src="/api/fleet/devices/${d.id}/stream" loading="lazy" onerror="this.outerHTML='<div class=ph>✕ no frame<br><span style=font-size:10px>stream ended</span></div>'">`}
       </div>
       <div class="dfoot">
         <div class="dser">${esc(d.serial)} · ${d.kind}</div>

@@ -84,11 +84,15 @@ class FleetStreamService:
         loop = await self.attach(serial)
         try:
             last = 0.0
+            started = time.time()
             while True:
                 if loop.frame and loop.frame_at > last:
                     last = loop.frame_at
                     yield (b"--frame\r\nContent-Type: image/png\r\nContent-Length: "
                            + str(len(loop.frame)).encode() + b"\r\n\r\n" + loop.frame + b"\r\n")
+                elif (not loop.frame and time.time() - started > 12.0) or \
+                        (loop.frame and time.time() - loop.frame_at > 20.0):
+                    return
                 await asyncio.sleep(0.05)
         finally:
             await self.detach(serial)

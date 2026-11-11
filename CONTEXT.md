@@ -118,3 +118,23 @@ unified workspace, `/fleet` standalone wall).
 - mac `/run` (LLM sessions on the desktop) needs HttpDesktopDriver +
   DesktopActuator per spec §A.5 — returns 501 today.
 - Golden re-baseline flow: bump `GOLDEN_REV` → drain/reclone fleet.
+
+## 2026-11-08 (devin — href/embed link audit, read-only)
+
+Audited every href/src/iframe/window.open across the served surfaces
+(`apps/admin_console/{index,fleet}.html`, `apps/showcase_ui` src + built
+`artemis/resources/showcase_ui`). Findings:
+- Admin console (`/admin`, `/fleet`): fully self-contained — all links/media
+  are same-origin (`/api/...`, `/videos/...`, icons). No CDNs, no iframes;
+  device screens are MJPEG `<img>`. Only nit: `/api/traces/<id>/download`
+  `target=_blank` lacks `rel=noopener` (same-origin, low risk).
+- Showcase UI (upstream Angular app): EXTERNAL embeds — Google Fonts
+  (`fonts.googleapis.com` preconnect+stylesheets, built bundle also inlines
+  `fonts.gstatic.com` woff2) and two doc links on the home page:
+  `aistudio.google.com/app/apikey` (upstream Google branding leftover on a
+  Voshu-labeled surface) + `developer.android.com/studio` (legit).
+- `floating-video-player.component.ts` L467/615 `window.open(url,'_blank')`
+  (internal replay URLs; no noreferrer features — low risk).
+- `playground/` cuttlefish iframe = dev-only, not part of the served surface.
+- Server sets `X-Frame-Options: deny` (live-verified via mission embeds
+  probe) — Ops embeds refuse honestly.
