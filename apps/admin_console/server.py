@@ -182,6 +182,24 @@ async def on_startup():
     await ipc_service.start_server()
     state.worker_task = asyncio.create_task(task_queue_service.queue_worker())
 
+    # Agent-device heartbeat: poll every agentd host so an offline box flips
+    # to "offline" within an interval even when nobody is watching the fleet
+    # list (sync_agents also refreshes on each /api/fleet/devices read).
+    from artemis.fleet.agentd import sync_agents
+
+    async def _fleet_heartbeat(interval_s: float = 30.0):
+        from artemis.fleet.commander_sync import sync_commander_devices
+
+        while not state.is_shutting_down:
+            try:
+                await sync_agents()
+                await sync_commander_devices()  # no-op unless ARTEMIS_COMMANDER_URL set
+            except Exception as exc:
+                print(f"[FleetHeartbeat] sync failed: {exc}")
+            await asyncio.sleep(interval_s)
+
+    state.fleet_heartbeat_task = asyncio.create_task(_fleet_heartbeat())
+
 
 async def on_shutdown():
     """Stop task and IPC children before the UI server exits."""
