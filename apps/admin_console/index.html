@@ -357,6 +357,8 @@
                     <div class="fl-dright">
                         <div class="fl-dtitle"><h2 id="fl-d-name">device</h2><span class="fl-st" id="fl-d-st">—</span><button class="fl-x" id="fl-d-close">✕</button></div>
                         <div class="fl-kv" id="fl-d-kv"></div>
+                        <div class="fl-sect">Fleet</div>
+                        <div><button class="fl-btn sm" id="fl-d-expand" type="button">Add device</button></div>
                         <div class="fl-sect">Run a task</div>
                         <div class="fl-goalrow"><input id="fl-d-goal" placeholder="Open Chrome and search…"><button class="fl-btn sm" id="fl-d-run">Run</button></div>
                         <div class="fl-sect">Keys</div>
@@ -4104,6 +4106,7 @@
 
       async function prov(n){try{ftoast('provisioning '+n+' device'+(n>1?'s':'')+' — cloning golden…');const r=await fapi('/api/fleet/provision',{count:n});(r.results||[]).forEach(x=>ftoast(x.ok?`${x.id} online @ ${x.serial}`:`${x.id||'clone'} failed: ${x.error}`,!x.ok));if(r.created_golden)ftoast('golden baseline created');}catch(e){ftoast(e.message,true)}refreshFleet()}
       F$('#fl-b-prov1').onclick=()=>prov(1);F$('#fl-b-prov3').onclick=()=>prov(3);
+      F$('#fl-d-expand').onclick=()=>prov(1);
       F$('#fl-b-sync').onclick=refreshFleet;
 
       async function refreshFleet(){

@@ -127,6 +127,8 @@ input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--b
       <div class="dright">
         <div class="dtitle"><h2 id="d-name">device</h2><span class="st" id="d-st">—</span><button class="x" id="d-close">✕</button></div>
         <div class="kv" id="d-kv"></div>
+        <div class="sect">Fleet</div>
+        <div><button class="btn sm" id="d-expand" type="button">Add device</button></div>
         <div class="sect">Run a task</div>
         <div class="goalrow"><input id="d-goal" placeholder="Open Chrome and search…"><button class="btn sm" id="d-run">Run</button></div>
         <div class="sect">Keys</div>
@@ -250,6 +252,7 @@ $('#d-del').onclick=async()=>{
 /* provision + sync */
 async function prov(n){try{toast('provisioning '+n+' device'+(n>1?'s':'')+' — cloning golden…');const r=await api('/api/fleet/provision',{count:n});(r.results||[]).forEach(x=>toast(x.ok?`${x.id} online @ ${x.serial}`:`${x.id||'clone'} failed: ${x.error}`,!x.ok));if(r.created_golden)toast('golden baseline created');}catch(e){toast(e.message,true)}refresh()}
 $('#b-prov1').onclick=()=>prov(1);$('#b-prov3').onclick=()=>prov(3);
+$('#d-expand').onclick=()=>prov(1);
 $('#b-sync').onclick=refresh;
 
 async function refresh(){

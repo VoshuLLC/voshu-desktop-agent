@@ -39,7 +39,9 @@ mcp = FastMCP(
         "mobile_get_device_state to inspect real-time device screen/hierarchy, "
         "mobile_inspect_trace to inspect detailed execution steps and visual action overlays, "
         "and mobile_diagnose whenever a tool errors, no device is found, or the user says "
-        "ARTEMIS is not working: it checks the environment and returns ordered fix steps."
+        "ARTEMIS is not working: it checks the environment and returns ordered fix steps. "
+        "Use mobile_expand_fleet to provision golden-image clones onto the fleet "
+        "(count 1..8; the one-device screen adds one)."
     ),
 )
 
