@@ -197,6 +197,7 @@ def test_cli_mcp_generate_config_antigravity():
         "mobile_get_device_state",
         "mobile_inspect_trace",
         "mobile_diagnose",
+        "mobile_expand_fleet",
     }
     assert all(tool["eager"] is True for tool in legacy_config["tools"].values())
 
@@ -236,6 +237,7 @@ def test_cli_mcp_generate_config_codex():
         "mobile_get_device_state",
         "mobile_inspect_trace",
         "mobile_diagnose",
+        "mobile_expand_fleet",
     ]
 
 
@@ -433,6 +435,7 @@ def test_cli_mcp_install_codex_preserves_config_and_is_idempotent(tmp_path, monk
         "mobile_get_device_state",
         "mobile_inspect_trace",
         "mobile_diagnose",
+        "mobile_expand_fleet",
     ]
     assert data["mcp_servers"]["artemis"]["env"]["PYTHONPATH"] == str(tmp_path)
     assert config_text.count("# BEGIN ARTEMIS MCP CONFIG") == 1

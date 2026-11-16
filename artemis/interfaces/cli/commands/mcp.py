@@ -42,6 +42,7 @@ ARTEMIS_MCP_TOOLS = (
     "mobile_get_device_state",
     "mobile_inspect_trace",
     "mobile_diagnose",
+    "mobile_expand_fleet",
 )
 
 

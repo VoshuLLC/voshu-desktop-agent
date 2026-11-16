@@ -455,6 +455,7 @@ async def test_mcp_server_auto_registers_tools():
         "mobile_manage_task",
         "mobile_get_device_state",
         "mobile_inspect_trace",
+        "mobile_expand_fleet",
     }.issubset(tool_names)
 
 
