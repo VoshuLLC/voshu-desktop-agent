@@ -1,9 +1,26 @@
 # Artemis — project context
 
-Fork of `google/artemis` (mobile device agent automation, Apache-2.0). Voshu-operated
-as the device-control plane: phone-farm fleet + deterministic recipe engine + Voshu
-Router inference lanes. Console: `artemis ui` → `http://127.0.0.1:8000` (`/admin`
-unified workspace, `/fleet` standalone wall).
+Voshu Desktop Agent. Fork of `google/artemis` (Apache-2.0) at
+`VoshuLLC/voshu-desktop-agent`. Commander device-control tool: phone-farm fleet,
+recipe engine, and Voshu Router lanes. Console: `artemis ui` →
+`http://127.0.0.1:8000` (`/admin` unified workspace, `/fleet` standalone wall).
+
+## Current state (2026-11-26 13:05 ET)
+
+winagentd LIVE on VM100 (DESKTOP-UHI01BH) — Windows agent daemon verified
+end-to-end through artemis's own HttpDesktopDriver: 53 UIA elements, shell,
+tap all green. Enrolled in the fleet as `vm100-desktop-uhi01bh` (kind win)
+via socat forwarder on pve-leh (100.127.151.100:8177 -> 10.1.10.84:8177).
+Installer hardened with all deployment lessons (scoped AMSI exclusion,
+interactive-token task, parse-verify, LAN serving); DEPLOYMENT.md is the
+runbook. Note: socat forwarder on pve-leh is a manual process — needs a
+systemd unit to survive reboots. Next: first real CUA task (Amazon run
+acceptance test), playbook capture/replay layer, signed compiled agent.
+
+
+## Current state (2026-11-17 17:40 ET)
+
+This folder is a worktree of `~/Developement/artemis` at `wip/fleet-fixes` (`104674d`). `main` on the fork is Google's main plus the four Voshu commits. The fork is public because GitHub does not allow a private fork of a public repo. Commander on CT170 stores this tool as connector `artemis-bb00a8`, name Voshu Desktop Agent, URL `http://100.91.79.7:18092/mcp`. The running Commander process keeps the old name until it restarts. Port 18092 is not listening.
 
 ## Current state (2026-11-07)
 
