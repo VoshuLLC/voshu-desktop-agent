@@ -1,30 +1,30 @@
-# winagentd.ps1 — Windows desktop agent daemon for ARTEMIS (VOSHU-DEVICE-CONTROL).
+# winagentd.ps1 -- Windows desktop agent daemon for ARTEMIS (VOSHU-DEVICE-CONTROL).
 #
 # Mirror of macagentd.py: the same HTTP contract so artemis/drivers/desktop/
 # http_driver.py can drive a Windows machine exactly like a macOS one:
 #
 #   GET  /health       liveness + screen size + capability report          (no auth)
-#   GET  /screenshot   PNG (or ?format=jpg) — GDI CopyFromScreen
+#   GET  /screenshot   PNG (or ?format=jpg) -- GDI CopyFromScreen
 #   GET  /frame        alias of /screenshot (fleet tile path)
 #   GET  /hierarchy    UIAutomation element tree of the visible desktop
 #   POST /input        {action, x, y, duration_ms?, times?, dx?, dy?}
 #                      tap/double/right/long/move/swipe/scroll via SendInput
-#   POST /type         {text, clear_existing?} — KEYEVENTF_UNICODE keystrokes
-#   POST /key          {key} — virtual-key map (ENTER/TAB/ESC/BACK/HOME/arrows...)
-#   POST /shell        {cmd, timeout_s?} — powershell child process
+#   POST /type         {text, clear_existing?} -- KEYEVENTF_UNICODE keystrokes
+#   POST /key          {key} -- virtual-key map (ENTER/TAB/ESC/BACK/HOME/arrows...)
+#   POST /shell        {cmd, timeout_s?} -- powershell child process
 #   POST /app          {action: launch|terminate, name}
 #
 # Every route except /health requires `Authorization: Bearer <token>`.
 # The token lives in C:\ProgramData\winagentd\token.txt (machine-local only).
 #
 # Zero dependencies: PowerShell 5.1 + .NET Framework, both ship with Windows.
-# Input goes through SendInput — the kernel input path — so it is
+# Input goes through SendInput -- the kernel input path -- so it is
 # indistinguishable from a human at the machine, and the real system cursor
 # moves: anyone watching the console sees the ghost cursor work.
 #
 # MUST run inside the interactive user session (a service in session 0
 # cannot see or drive the user desktop). Deploy as a scheduled task with
-# interactive token — see docs or the voshu-rc deploy scripts.
+# interactive token -- see docs or the voshu-rc deploy scripts.
 
 param(
     [int]$Port = 8177,
@@ -399,7 +399,7 @@ while ($true) {
         $query = ""
         if ($req.Path -match "\?(.*)$") { $query = $Matches[1] }
 
-        # auth — /health open, everything else needs the bearer token
+        # auth -- /health open, everything else needs the bearer token
         if ($pathOnly -ne "/health") {
             $authed = $false
             if ($script:Token.Length -gt 0 -and $req.Head -match "(?i)Authorization:\s*Bearer\s+(\S+)") {

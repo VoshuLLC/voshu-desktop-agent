@@ -1,0 +1,82 @@
+# winagentd deployment runbook
+
+Windows counterpart of `macagentd.py`: a zero-dependency PowerShell 5.1 daemon
+exposing the ARTEMIS desktop HTTP contract (`/health /screenshot /frame
+/hierarchy /input /type /key /shell /app`) so `HttpDesktopDriver` can drive a
+Windows machine exactly like a macOS one. Input is `SendInput` — kernel-level,
+indistinguishable from human input, and it moves the real system cursor, which
+is the ghost cursor: anyone watching the console sees the agent work.
+
+## Verified first deployment: VM100 (2026-11-26)
+
+DESKTOP-UHI01BH, 10.1.10.84, Proxmox VM 100. Full contract green: shell exec,
+input injection, UIA hierarchy (35 elements in ~2.3s), token auth. Daemon runs
+in interactive session 1, auto-restarts at logon via scheduled task.
+
+## Hard-won deployment lessons (all baked into install-winagentd.ps1)
+
+1. **Defender AMSI blocks the daemon.** SendInput injection + hidden listener
+   is textbook RAT behavior — of course it gets flagged. The fix is a *scoped*
+   `Add-MpPreference -ExclusionPath <daemon dir>` applied BEFORE first run.
+   NEVER use `ExclusionProcess` — a machine-wide hole that would strip
+   protection from all PowerShell malware on the box. (Briefly made exactly
+   that mistake during first deploy; reverted within minutes. Don't repeat it.)
+   Long-term answer: a signed compiled agent binary, which doesn't trip AMSI
+   the way a raw script does.
+
+2. **The daemon must live in the interactive user session.** qemu guest exec,
+   WinRM, and services all land in session 0 — screenshots black, input goes
+   nowhere. Deploy as an interactive-token scheduled task
+   (`schtasks /ru <user> /it /sc onlogon`): no stored password, fires only
+   when the user is logged in, which is exactly when a drivable desktop exists.
+   Session 0 execution is acceptable only as a compile/bind smoke test.
+
+3. **Serve payloads over the target's LAN, not tailnet.** VM guests may have
+   no tailscale client even when they reach tailnet-adjacent services. First
+   deploy failed silently on exactly this: zero requests ever hit the server —
+   the server log is ground truth, check it first.
+
+4. **ASCII-only script content.** PowerShell 5.1 reads UTF-8-without-BOM as
+   ANSI; multibyte punctuation (em-dashes, arrows) mangles. Harmless inside
+   comments, lethal inside strings. Keep the daemon ASCII-clean; verify with
+   the engine's own parser on the target before installing
+   (`Parser::ParseFile` — the installer does this automatically and aborts on
+   error).
+
+5. **PowerShell 5.1 ≠ pwsh 7 syntax.** No `?:` ternary, no `??`. Static method
+   calls need parens and commas: `[W32]::ClickAt($x, $y, "left", 1, 50)`.
+   Parse-verify on 5.1 — a pwsh 7 parse pass proves nothing.
+
+6. **Encoding for remote exec.** When pushing commands through qemu guest
+   exec or similar nested channels, use `powershell -EncodedCommand` with
+   UTF-16LE base64 — it is the only quoting-safe transport across
+   ssh→bash→qm→powershell layering.
+
+## Install (VM100-style, from the Proxmox host)
+
+```
+# payload server on the LAN (any static file server; check its access log)
+cd /root/pubserve && python3 -m http.server 8077 &
+
+# on the guest, as SYSTEM/admin:
+powershell -ep bypass -c "iex (iwr -useb http://<lan-ip>:8077/install-winagentd.ps1).content"
+```
+
+Installer is idempotent and self-verifying: exits 0 only when the listener
+answers, and writes a step-by-step `install.log` next to the daemon.
+
+## Enrolling in the ARTEMIS fleet
+
+`enroll(kind="win", serial, host, port, token)` — see `artemis/fleet/agentd.py`.
+Reachability note: the control machine must route to the guest. When the guest
+LAN is unreachable, either install tailscale in the guest template or run a
+forwarder on the hypervisor (`socat TCP-LISTEN:8177,fork TCP:<guest>:8177`)
+and enroll against the forwarder.
+
+## Security posture
+
+- Token auth on every route except `/health`; token is machine-local at
+  `C:\ProgramData\winagentd\token.txt`, never logged or committed.
+- The firewall rule opens the port LAN-wide; the token is the auth boundary.
+  Owner-phase acceptable; customer-grade requires per-session credentials.
+- The daemon is a full-control channel by design. Treat its port like root SSH.
