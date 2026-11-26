@@ -5,6 +5,28 @@ Voshu Desktop Agent. Fork of `google/artemis` (Apache-2.0) at
 recipe engine, and Voshu Router lanes. Console: `artemis ui` →
 `http://127.0.0.1:8000` (`/admin` unified workspace, `/fleet` standalone wall).
 
+## Current state (2026-11-26 13:20 ET)
+
+Acceptance probe results — precise engineering boundary established:
+element grounding WORKS for native Windows chrome (taskbar, window
+controls, Edge app bar, address bar all exposed with coordinates) and
+Edge DOES wake renderer accessibility for web content after the first
+UIA query (Amazon product links appeared: "Premium Emergency Food...").
+BUT the UIA walk is not yet robust for browser content: Chromium
+virtualizes its accessibility tree (only viewport-visible elements
+materialize), the tree re-lazes per navigation, and deep content is
+inconsistently exposed — the walk returns 75-99 elements where a full
+DOM has thousands. THIS is the next scoped task: hierarchy walk
+hardening (scroll-triggered materialization, per-tab document scoping,
+detached-element retry, maybe CDP Accessibility domain as a richer
+source for Chromium windows). The Amazon add-to-cart acceptance test
+is blocked on exactly this, not on input or transport — both proven.
+socat forwarder now a systemd unit (winagentd-forward.service,
+enabled+active). ARTEMIS full task loop (mobile_run_task) needs LLM
+provider keys configured + daemon on :8000 + the win-kind device path
+wired into the task runner — currently ADB-centric.
+
+
 ## Current state (2026-11-26 13:05 ET)
 
 winagentd LIVE on VM100 (DESKTOP-UHI01BH) — Windows agent daemon verified
