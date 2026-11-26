@@ -300,8 +300,8 @@ function Get-UiaHierarchy() {
         return @{ ok = $false; error = "UIAutomation assemblies unavailable"; elements = @() }
     }
     $elements = New-Object System.Collections.ArrayList
-    $budget = 500
-    $maxDepth = 14
+    $budget = 900
+    $maxDepth = 24
     $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
 
     function Walk($el, [int]$depth) {
@@ -333,13 +333,15 @@ function Get-UiaHierarchy() {
                 })
             }
         } catch { }
-        try {
-            $child = $walker.GetFirstChild($el)
-            while ($null -ne $child -and $elements.Count -lt $budget) {
-                Walk $child ($depth + 1)
-                $child = $walker.GetNextSibling($child)
-            }
-        } catch { }
+        $child = $null
+        try { $child = $walker.GetFirstChild($el) } catch { }
+        while ($null -ne $child -and $elements.Count -lt $budget) {
+            Walk $child ($depth + 1)
+            $next = $null
+            try { $next = $walker.GetNextSibling($child) } catch { }
+            if ($null -eq $next) { break }
+            $child = $next
+        }
     }
 
     try {
