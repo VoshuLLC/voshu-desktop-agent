@@ -186,7 +186,7 @@ public static class W32 {
 }
 "@
 
-Add-Type -TypeDefinition $win32 -ReferencedAssemblies @()
+Add-Type -TypeDefinition $win32
 
 Add-Type -AssemblyName System.Drawing
 
