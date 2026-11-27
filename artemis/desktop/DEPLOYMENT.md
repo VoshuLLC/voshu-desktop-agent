@@ -136,3 +136,30 @@ Transport war notes for the next session:
 Better long-term transport (implement once, ends this class of problem):
 add a /deploy route to the daemon that accepts raw base64 in the POST body
 of a single request — no chunking, no shell quoting, no intermediate files.
+
+## CDP bridge — VERIFIED LIVE (2026-11-27, commit 8b3826f+)
+
+End-to-end verification on VM100 against live Amazon:
+
+1. Edge launch recipe (dedicated automation profile):
+   `msedge --remote-debugging-port=9333 --remote-allow-origins=* --user-data-dir=C:\ProgramData\winagentd\edge-profile --no-first-run`
+   Both flags are required — Chromium 111+ rejects CDP websockets without the origin allowlist.
+2. Merged perception: 979 elements on an Amazon results page (CDP DOM + UIA chrome).
+   Product title links — invisible to UIA — surface with correct screen coords.
+3. Coordinate translation: viewport coords + browser Document element's UIA
+   bounding origin. Verified accurate: product click navigated to correct dp/ page.
+4. Scroll primitive (`/input action=scroll dy`) is the correct scrolling mechanism:
+   hover+wheel needs no focus. Keyboard scrolling is focus-fragile — do not use it.
+5. Full acceptance chain executed semantically: search typed → results → product
+   clicked by element → product page → Add-to-Cart clicked at (893,118) — Amazon
+   answered with a sign-in wall. That is anti-bot escalation on the FRESH
+   automation profile, not a capability gap. Options: sign in once on the
+   automation profile (manual, one-time), or transplant the default profile's
+   Amazon cookies. Decision belongs to the owner.
+6. Anti-bot checkpoints ("I am human" checkbox) ARE visible in the CDP tree and
+   clickable — the gate was passed once already this session.
+7. Operational lessons: never blind-tap to focus before scrolling (misclicks
+   navigate); multi-tab windows make first-page-target selection fragile —
+   a smarter target picker (match UIA foreground window title) is future work.
+8. File transport that works: python http.server on pve-leh /tmp/wasrv, daemon
+   downloads direct. The chunked base64 path is dead — do not revive it.
