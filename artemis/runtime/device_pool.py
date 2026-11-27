@@ -190,7 +190,7 @@ class DevicePool:
                 return list(self._cached_raw)
         return None
 
-    def _store_snapshot(self, raw: list[tuple[str, str, str | None, str | None]]) -> None:
+    def _store_snapshot(self, raw: list[tuple[str, str, str | None, str | None]]) -> list[tuple[str, str, str | None, str | None]]:
         # Fleet desktop devices (kind mac|win|linux) are not adb-visible: they
         # enroll in the fleet registry and are driven over HTTP agentd. Merge
         # them into the snapshot as synthetic entries so validation, listing
@@ -215,6 +215,7 @@ class DevicePool:
             self._cached_raw = merged
             self._cached_at = time.monotonic()
             self._warmed = True
+        return merged
 
     def _enumerate_sync(self) -> list[tuple[str, str, str | None, str | None]] | None:
         """Return the raw enumeration, or None when the query failed and no
@@ -231,8 +232,7 @@ class DevicePool:
             raw = self._query_adb_devices_sync()
             if raw is None:
                 return self._cached_snapshot(allow_stale=True)
-            self._store_snapshot(raw)
-            return raw
+            return self._store_snapshot(raw)
 
     async def _enumerate_async(self) -> list[tuple[str, str, str | None, str | None]] | None:
         cached = self._cached_snapshot(allow_stale=False)
@@ -257,8 +257,7 @@ class DevicePool:
         raw = await self._query_adb_devices_async()
         if raw is None:
             return self._cached_snapshot(allow_stale=True)
-        self._store_snapshot(raw)
-        return raw
+        return self._store_snapshot(raw)
 
     async def _start_adb_server(self, timeout: float) -> None:
         """Best-effort bounded `adb start-server` so later queries hit a warm daemon."""
