@@ -104,3 +104,35 @@ NEXT (design final, implementation pending):
 3. Driver shadow-model — HttpDesktopDriver keeps a diff-applied live tree;
    get_screen_data becomes cheap. Playbook anchors bind AutomationId+role
    +name with coordinate fallback — capture/replay becomes possible.
+
+## CDP bridge deployment state (2026-11-27 — mid-transport handoff)
+
+The CDP build (commit cdf3f7b) is committed but NOT yet running on VM100.
+Transport war notes for the next session:
+
+1. File servers: port 80 on pve-leh is a node service, NOT apache. There is no
+   reliable HTTP file server. Do not waste time on /var/www/html.
+2. The chunked-base64 push through the daemon's own /shell is the working
+   channel (wa-push.py on pve-leh), BUT one chunk of the last push was mangled
+   in transit (target file 33504 bytes vs source 35604 — exactly one 2800-char
+   chunk short, likely a base64 `+` eaten by a quoting layer). FIX: re-push
+   with per-chunk verification — after each Add-Content, read back the file
+   length and retry the chunk if it didn't grow by exactly len(chunk).
+3. Bootstrap decode chain that works: push decode script as base64 in d.b64
+   (small), certutil-decode it (fine for small files), run it — it decodes
+   wa.b64 with PowerShell [Convert]::FromBase64String into winagentd.ps1.
+   certutil FAILS on the big file directly (single-line base64 too long).
+4. VM state right now: wa.b64 + d.b64 + dec.ps1 all staged in
+   C:\ProgramData\winagentd\; daemon still running OLD build (0.1.0, healthy).
+   Edge may need relaunch with: --remote-debugging-port=9333
+   --user-data-dir=C:\ProgramData\winagentd\edge-profile --no-first-run
+   (dedicated automation profile — modern chromium refuses debug port on the
+   default profile). Amazon guest cart does not carry over; acceptable.
+5. After re-push: schtasks end+run, verify /hierarchy response contains
+   "cdp":{"ok":true} and elements with source=cdp + href fields on an Amazon
+   results page. Then the acceptance test: product element visible in tree ->
+   invoke by name -> cart count increments.
+
+Better long-term transport (implement once, ends this class of problem):
+add a /deploy route to the daemon that accepts raw base64 in the POST body
+of a single request — no chunking, no shell quoting, no intermediate files.
