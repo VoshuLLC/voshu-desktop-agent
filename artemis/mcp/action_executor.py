@@ -93,13 +93,35 @@ class McpActionExecutor:
         agent_name: str = "validator",
     ):
         self.ctx = ctx
-        self.actuator = actuator or getattr(ctx, "actuator", None) or AdbActuator(ctx, controller)
+        self.actuator = (
+            actuator
+            or getattr(ctx, "actuator", None)
+            or self._default_actuator(ctx, controller)
+        )
         self.controller = self.actuator.controller
         # Identifies the calling agent / profile to the Explorer tier resolver
         # (``explorer.flash_mode`` vs ``explorer.pro_mode``); the agent itself
         # never sees or chooses the tier.
         self.agent_name = agent_name
         self._session: ActionSession | None = None
+
+    @staticmethod
+    def _default_actuator(ctx, controller):
+        """Pick the actuator matching the device's platform.
+
+        Fleet desktops (mac/win/linux over HTTP agentd) take the desktop
+        actuator: identical coordinate semantics, but app management and URL
+        opening reimplemented without Android package/intent machinery.
+        """
+        try:
+            platform_value = str(getattr(ctx.device, "mobile_platform", "") or "")
+        except Exception:
+            platform_value = ""
+        if platform_value.lower().endswith("desktop"):
+            from artemis.mcp.actuators.desktop import DesktopActuator
+
+            return DesktopActuator(ctx, controller)
+        return AdbActuator(ctx, controller)
 
     @property
     def action_tool_names(self) -> frozenset[str]:

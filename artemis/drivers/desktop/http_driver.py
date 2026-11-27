@@ -118,12 +118,41 @@ class HttpDesktopDriver(BaseDeviceDriver):
             await self._client.aclose()
             self._client = None
 
+    @staticmethod
+    def _to_jpeg(png_bytes: bytes, max_width: int = 1280, quality: int = 72) -> bytes:
+        """Transcode a PNG frame to a compact JPEG for prompt transport.
+
+        Falls back to the original bytes when Pillow cannot decode, so a
+        malformed capture degrades size-wise but never kills perception.
+        """
+        try:
+            import io
+
+            from PIL import Image
+
+            img = Image.open(io.BytesIO(png_bytes))
+            if img.width > max_width:
+                ratio = max_width / img.width
+                img = img.resize((max_width, int(img.height * ratio)), Image.LANCZOS)
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=quality, optimize=True)
+            return buf.getvalue()
+        except Exception:
+            return png_bytes
+
     async def get_screen_data(self, skip_settling: bool = False) -> ScreenData:
         cli = await self._cli()
         r = await cli.get("/screenshot", params={"format": "png"})
         if r.status_code != 200:
             raise RuntimeError(f"agentd /screenshot -> {r.status_code}")
         shot = r.content
+        # agentd serves PNG, but agent prompts embed frames as JPEG — and a
+        # full-desktop PNG base64 inflates past router body caps (2MB). Transcode
+        # once here so every downstream consumer gets a compact, correctly-labeled
+        # JPEG; the raw PNG offers no benefit the agent can use.
+        shot = self._to_jpeg(shot)
         # Desktops have no DOM; the agentd AX hierarchy is the element source.
         elements: list[dict[str, Any]] = []
         try:

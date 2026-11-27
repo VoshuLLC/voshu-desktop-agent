@@ -64,6 +64,9 @@
 
     // 🎯 Operator: Screen perception, element interaction, and direct execution
     "operator": {
+      "provider": "custom",
+      "model": "nim/nvidia/nemotron-3.5-lightning-30b-a3b",
+      "fallback": { "provider": "custom", "model": "kilo/nvidia/nemotron-3.5-super-vl:free" },
       "thinking_level": "medium",
       "include_thoughts": true
     },
