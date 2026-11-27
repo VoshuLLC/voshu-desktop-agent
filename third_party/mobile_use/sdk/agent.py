@@ -992,6 +992,21 @@ class AgentBase:
         device_id: str,
         platform: DevicePlatform,
     ):
+        # Fleet desktop devices (kind mac|win|linux) are driven over HTTP
+        # agentd through the controller's desktop driver — they have no adb
+        # presence, so the Android helper/UIAutomator chain must not be built.
+        try:
+            from artemis.fleet.registry import AGENT_KINDS, fleet_registry
+
+            if any(
+                d.serial == device_id and d.kind in AGENT_KINDS
+                for d in fleet_registry.list()
+            ):
+                self._adb_client = None
+                self._ui_adb_client = None
+                return
+        except Exception:
+            pass
         self._adb_client = AdbClient(
             host=self._config.servers.adb_host,
             port=self._config.servers.adb_port,

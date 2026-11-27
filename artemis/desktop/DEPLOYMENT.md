@@ -184,3 +184,32 @@ Verified end-to-end through artemis's own HttpDesktopDriver: 143 elements
 + 444KB screenshot + CDP-sourced elements on the live VM. mcP tool layer
 (mobile_get_device_state) can be slow on big trees — the driver chain
 itself is 2s.
+
+## Brain-driven execution wiring — RESOLVED (2026-11-27, session 2)
+
+The chain MCP task -> daemon -> worker -> fleet desktop is fully patched:
+1. device_pool enumeration leader dropped merged fleet devices (only cache
+   followers saw them) — fixed, both paths return the merged snapshot.
+2. third_party Agent._init_clients unconditionally built the Android
+   helper/UIAutomator chain — now skipped for fleet serials (adb client None).
+3. _ensure_device_unlocked rejected the missing adb client — returns early
+   for desktop platform. Callers already None-guard the screen client.
+4. The MCP env OPENAI_API_KEY must be copied VERBATIM from
+   ~/.artemis-router-key — a same-length transcription error cost a session.
+   Verify with /v1/models before debugging anything downstream.
+5. Task lifecycle: a task paused on "resume signal" (LLM error hold) KEEPS
+   the device lock — always mobile_manage_task action=stop before retrying.
+
+## REMAINING BLOCKER — router upstream capacity (owner decision)
+
+agent/planner is bridged through the pollinations free Classic API:
+hard 16,000-char prompt cap. Agentic observe-think-act prompts (system
+prompt + desktop element tree) are far larger. The Flash loop on VM100
+reached Turn 1 with live screenshot+hierarchy and died at the LLM call
+with bridge 413. Text inference as such is proven end-to-end.
+Fixes, in preference order:
+  a. install/repair the Antigravity CLI on CT 171 (the agent/* lane was
+     designed for it; upstream currently 502s, binary missing)
+  b. add a Pollinations API key to the router bridge (lifts the 16k cap)
+  c. revive the NIM/local vision upstream (also restores vision)
+Until one lands, brain-driven runs cannot complete a turn.

@@ -211,6 +211,12 @@ class Agent(AgentBase):
     async def _ensure_device_unlocked(self) -> None:
         """Reject secure keyguard instead of allowing an agent to guess credentials."""
         if self._adb_client is None:
+            # Fleet desktop devices have no adb client and no Android keyguard —
+            # there is nothing to inspect or reject.
+            if self._device_context is not None and str(
+                getattr(self._device_context, "mobile_platform", "")
+            ).lower().endswith("desktop"):
+                return
             raise AgentError("ADB client is not initialized.")
 
         device = self._adb_client.device(serial=self._device_context.device_id)
