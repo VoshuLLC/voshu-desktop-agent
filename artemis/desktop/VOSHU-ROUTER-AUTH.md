@@ -50,11 +50,30 @@ As of 2026-11-27: 71 models, 21 vision-capable (incl. gemini flash variants).
 
 ## ARTEMIS's key (current)
 
-- keyId `key_76678e602493ae70`, member `svc-artemis`,
+- keyId `key_398424200a3969c0`, member `svc-artemis`,
+  agentIds `[planner, agy-flash]` (scoped whitelist),
   label `artemis-cua-windows-fleet`, project `voshu-alex`
 - Lives at: `~/.artemis-router-key` on the Mac Studio (mode 600) and
   `/root/.svc-artemis-key` inside CT 171 (backup copy, mode 600)
 - Revoked predecessors: `key_e6526704976abfa7` (file surgery),
-  `key_ceddde995d350460` (wrong memberId) — both verified dead.
-- Rotation: mint a new key, update the two files + the artemis `.env`,
-  revoke the old keyId via `POST /api/inference/keys/<id>/revoke`.
+  `key_ceddde995d350460` (wrong memberId), `key_76678e602493ae70`
+  (unscoped agent list) — all verified dead.
+- Rotation: mint a new key, update the two files + the artemis runtime
+  config, revoke the old keyId via `POST /api/inference/keys/<id>/revoke`.
+
+## Verified status (2026-11-27)
+
+- Text inference PROVEN end-to-end: raw HTTP and the production
+  langchain-openai chain both round-trip through `agent/planner`.
+- Scope model: `agent/*` models check the key's agentIds whitelist; empty
+  means unrestricted. `kilo/*` and other non-agent models need no agent scope.
+- Vision inference currently UNAVAILABLE through the router: antigravity
+  upstream binary missing, kilo free VL pool rate-limited, vision/* NIM
+  upstream down, all agent/* models text-only. ARTEMIS's operator loop is
+  element-tree-primary so text suffices for basic operation, but
+  screenshot-evidence and video verification need a vision upstream restored
+  (router-side infrastructure task, CT 171).
+- MCP wiring: OPENAI_BASE_URL + OPENAI_API_KEY live in the windsurf
+  mcp_config.json artemis env block (the dotenv path is hook-blocked for
+  agents; the MCP env block is the documented alternative and preferred
+  since the server reads env at process start).
