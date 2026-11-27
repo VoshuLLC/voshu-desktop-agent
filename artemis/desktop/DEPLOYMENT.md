@@ -80,3 +80,27 @@ and enroll against the forwarder.
 - The firewall rule opens the port LAN-wide; the token is the auth boundary.
   Owner-phase acceptable; customer-grade requires per-session credentials.
 - The daemon is a full-control channel by design. Treat its port like root SSH.
+
+## v2 roadmap (designed 2026-11-26, partially shipped)
+
+SHIPPED: `/invoke` — semantic actuation. POST {name, role?, exact?} finds an
+element by name in the UIA tree and fires its control pattern
+(Invoke > Toggle > coordinate-click fallback using element bounds). Verified
+live: a deep Edge button invoked by name — and its post-action rename proved
+the actuation fired. This is the primary actuation mode going forward;
+coordinate input is the fallback for canvas-like surfaces.
+
+NEXT (design final, implementation pending):
+1. `/stream` — SSE channel pushing UIA StructureChanged/property diffs so
+   agents hold a live shadow tree instead of polling. Verification becomes
+   passive: assertions arrive as stream events.
+2. CDP bridge — Edge launches with --remote-debugging-port pinned in the VM
+   image; daemon merges Chromium's unvirtualized Accessibility.getFullAXTree
+   (no UIA virtualization limits — the Amazon-results gap dies at the root)
+   into the same element namespace as UIA native chrome. Implementation path:
+   System.Net.WebSockets.ClientWebSocket inside the daemon's existing
+   Add-Type block; resolve element coordinates lazily via DOM.getBoxModel
+   only for actionable candidates.
+3. Driver shadow-model — HttpDesktopDriver keeps a diff-applied live tree;
+   get_screen_data becomes cheap. Playbook anchors bind AutomationId+role
+   +name with coordinate fallback — capture/replay becomes possible.

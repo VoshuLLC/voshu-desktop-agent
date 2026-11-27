@@ -518,6 +518,83 @@ while ($true) {
                     Send-JsonResponse $stream 500 @{ ok = $false; error = $_.Exception.Message }
                 }
             }
+
+            "^/invoke$" {
+                # semantic actuation: find element, fire its control pattern.
+                # body: {name?, automationId?, role?, exact?} — first match wins.
+                $targetName = [string]$body.name
+                $targetRole = [string]$body.role
+                $exact = [bool]$body.exact
+                $found = $null; $patternUsed = ""; $walkErr = ""
+                if (-not $script:uiaOk) {
+                    Send-JsonResponse $stream 501 @{ ok = $false; error = "uia unavailable" }
+                } elseif ($targetName.Length -eq 0) {
+                    Send-JsonResponse $stream 400 @{ ok = $false; error = "name required" }
+                } else {
+                    try {
+                        $root = [System.Windows.Automation.AutomationElement]::RootElement
+                        $walker2 = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+                        $script:invokeHit = $null
+                        $budget2 = 1200
+                        $count2 = 0
+                        function Find-El($el, [int]$depth) {
+                            if ($null -eq $el -or $depth -gt 24 -or $null -ne $script:invokeHit) { return }
+                            $script:count2ref = 0
+                            try {
+                                $cur = $el.Current
+                                $nm = [string]$cur.Name
+                                $ct = $cur.ControlType.ProgrammaticName -replace "^ControlType\.", ""
+                                $hit = $false
+                                if ($exact) { if ($nm -eq $targetName) { $hit = $true } }
+                                elseif ($nm.ToLower().Contains($targetName.ToLower())) { $hit = $true }
+                                if ($hit -and $targetRole.Length -gt 0 -and $ct -ne $targetRole) { $hit = $false }
+                                if ($hit) { $script:invokeHit = $el; return }
+                            } catch { }
+                            $ch = $null
+                            try { $ch = $walker2.GetFirstChild($el) } catch { }
+                            while ($null -ne $ch -and $null -eq $script:invokeHit) {
+                                Find-El $ch ($depth + 1)
+                                $nx = $null
+                                try { $nx = $walker2.GetNextSibling($ch) } catch { }
+                                if ($null -eq $nx) { break }
+                                $ch = $nx
+                            }
+                        }
+                        Find-El $root 0
+                        if ($null -eq $script:invokeHit) {
+                            Send-JsonResponse $stream 404 @{ ok = $false; error = "element not found: $targetName" }
+                        } else {
+                            $el = $script:invokeHit
+                            $done = $false
+                            try {
+                                $ip = $el.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+                                if ($ip) { $ip.Invoke(); $patternUsed = "Invoke"; $done = $true }
+                            } catch { }
+                            if (-not $done) {
+                                try {
+                                    $tp = $el.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+                                    if ($tp) { $tp.Toggle(); $patternUsed = "Toggle"; $done = $true }
+                                } catch { }
+                            }
+                            if (-not $done) {
+                                try {
+                                    $r = $el.Current.BoundingRectangle
+                                    $cx = [int]($r.X + $r.Width / 2); $cy = [int]($r.Y + $r.Height / 2)
+                                    [W32]::ClickAt($cx, $cy, "left", 1, 50)
+                                    $patternUsed = "ClickFallback"; $done = $true
+                                } catch { }
+                            }
+                            if ($done) {
+                                Send-JsonResponse $stream 200 @{ ok = $true; pattern = $patternUsed; element = [string]$el.Current.Name }
+                            } else {
+                                Send-JsonResponse $stream 500 @{ ok = $false; error = "no usable pattern" }
+                            }
+                        }
+                    } catch {
+                        Send-JsonResponse $stream 500 @{ ok = $false; error = "invoke walk failed: $($_.Exception.Message)" }
+                    }
+                }
+            }
             default {
                 Send-JsonResponse $stream 404 @{ ok = $false; error = "no route: $pathOnly" }
             }
