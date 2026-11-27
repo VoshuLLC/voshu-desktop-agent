@@ -191,8 +191,28 @@ class DevicePool:
         return None
 
     def _store_snapshot(self, raw: list[tuple[str, str, str | None, str | None]]) -> None:
+        # Fleet desktop devices (kind mac|win|linux) are not adb-visible: they
+        # enroll in the fleet registry and are driven over HTTP agentd. Merge
+        # them into the snapshot as synthetic entries so validation, listing
+        # and automatic selection treat them as first-class pool members.
+        # The controller/driver layer already branches on the fleet registry
+        # before touching adb, so these serials never reach an adb codepath.
+        # Fleet read failures must never break adb enumeration.
+        merged = list(raw)
+        try:
+            from artemis.fleet.registry import AGENT_KINDS, fleet_registry
+
+            adb_serials = {t[0] for t in merged}
+            for dev in fleet_registry.list():
+                if dev.kind not in AGENT_KINDS or dev.serial in adb_serials:
+                    continue
+                if dev.status in ("dead", "offline", "booting"):
+                    continue
+                merged.append((dev.serial, "device", dev.kind, dev.name))
+        except Exception as exc:
+            logger.debug(f"fleet merge skipped: {exc}")
         with self._cache_lock:
-            self._cached_raw = list(raw)
+            self._cached_raw = merged
             self._cached_at = time.monotonic()
             self._warmed = True
 
