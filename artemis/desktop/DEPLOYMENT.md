@@ -213,3 +213,24 @@ Fixes, in preference order:
   b. add a Pollinations API key to the router bridge (lifts the 16k cap)
   c. revive the NIM/local vision upstream (also restores vision)
 Until one lands, brain-driven runs cannot complete a turn.
+
+## FIRST AUTONOMOUS RUN — PASS (2026-11-27 02:45 ET)
+
+Trace 4a125e34: the Flash loop completed the Notepad task with zero human
+intervention. Turn 1 launched Notepad through the desktop actuator, Turn 5
+focus-clicked, Turn 6 typed, Turn 8 self-completed. Verified independently
+on-machine (screenshot + hierarchy), NOT from the agent's self-report.
+
+Model answer to "which upstream": nim/nvidia/nemotron-3.5-lightning-30b-a3b
+carries agent-scale prompts through the router TODAY (pollinations free
+bridge hard-caps at 16k chars; kilo VL works but is a rate-limited shared
+pool). The operator node is pinned to it with kilo nemotron VL as fallback.
+Vision note: the runner embeds JPEG frames (~98KB after driver transcode);
+whether nemotron lightning actually attends to them is unverified — the
+element tree is what decisions provably use. Antigravity CLI on CT 171
+remains the correct long-term lane (real Gemini 3.8/Claude upstreams).
+
+Fidelity backlog: first keystroke of a type burst can race focus (leading
+'C' lost in the verified run) — add a small post-focus settle in the type
+path or verify-focus retry. Notepad/Edge state on the VM is cumulative
+across tests (saucedemo cart badge still shows 1 in the background).
