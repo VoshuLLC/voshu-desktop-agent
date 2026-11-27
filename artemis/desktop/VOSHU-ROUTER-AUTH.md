@@ -68,7 +68,7 @@ As of 2026-11-27: 71 models, 21 vision-capable (incl. gemini flash variants).
 - Scope model: `agent/*` models check the key's agentIds whitelist; empty
   means unrestricted. `kilo/*` and other non-agent models need no agent scope.
 - Vision inference currently UNAVAILABLE through the router: antigravity
-  upstream binary missing, kilo free VL pool rate-limited, vision/* NIM
+  upstream binary missing, kilo free VL pool rate-limited, `vision/*` NIM
   upstream down, all agent/* models text-only. ARTEMIS's operator loop is
   element-tree-primary so text suffices for basic operation, but
   screenshot-evidence and video verification need a vision upstream restored
