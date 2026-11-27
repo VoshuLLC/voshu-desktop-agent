@@ -558,6 +558,10 @@ while ($true) {
                 # using the browser Document element's UIA bounding origin.
                 try {
                     $cdp = Get-CdpElements 9333
+                    try {
+                        $dbg = "type=" + $(if ($null -eq $cdp) { "null" } else { $cdp.GetType().Name }) + " ok=" + $cdp.ok + " err=" + $cdp.error + " count=" + $cdp.count
+                        Set-Content "C:\ProgramData\winagentd\cdp-debug.txt" $dbg
+                    } catch {}
                     if ($cdp.ok -and $cdp.elements) {
                         $doc = $null
                         foreach ($e in $h.elements) {
