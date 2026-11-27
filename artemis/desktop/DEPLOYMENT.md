@@ -163,3 +163,24 @@ End-to-end verification on VM100 against live Amazon:
    a smarter target picker (match UIA foreground window title) is future work.
 8. File transport that works: python http.server on pve-leh /tmp/wasrv, daemon
    downloads direct. The chunked base64 path is dead — do not revive it.
+
+## Fleet enrollment wiring — RESOLVED (2026-11-27)
+
+The chain enrollment → valid task target is complete. Three integration bugs
+were found and fixed:
+
+1. device_pool was adb-only — fleet agent devices failed validation.
+   Fixed: merged into pool snapshot at store time (commit 286ace8).
+2. devices.json is CWD-relative ("traces/fleet") — windsurf spawns MCP
+   servers with different CWDs per workspace, so the server read a stray
+   registry. Fixed: ARTEMIS_FLEET_DIR pinned absolute in the windsurf
+   mcp_config.json artemis env block. NEVER rely on the relative default
+   in multi-workspace environments.
+3. Enrollment had landed in the worktree copy's registry — merged into the
+   canonical ~/Developement/artemis/traces/fleet/devices.json. The two
+   artemis checkouts share runtime state ONLY through the canonical path.
+
+Verified end-to-end through artemis's own HttpDesktopDriver: 143 elements
++ 444KB screenshot + CDP-sourced elements on the live VM. mcP tool layer
+(mobile_get_device_state) can be slow on big trees — the driver chain
+itself is 2s.
