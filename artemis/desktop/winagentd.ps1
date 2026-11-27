@@ -183,6 +183,47 @@ public static class W32 {
         seq[0] = KeyInput(vk, 0, KEYEVENTF_KEYUP);
         SendInput(1, seq, Marshal.SizeOf(typeof(INPUT)));
     }
+
+    // ---- CDP transport: websocket client for Chromium DevTools Protocol ----
+    // The daemon uses this to read the FULL unvirtualized DOM element set of
+    // a browser tab — UIA only ever exposes what Chromium materializes.
+    public class CDP {
+        public static string Eval(string wsUrl, string expression, int timeoutMs) {
+            System.Net.WebSockets.ClientWebSocket ws = new System.Net.WebSockets.ClientWebSocket();
+            ws.Options.KeepAliveInterval = System.TimeSpan.FromSeconds(5);
+            var connectTask = ws.ConnectAsync(new System.Uri(wsUrl), System.Threading.CancellationToken.None);
+            if (!connectTask.Wait(timeoutMs)) { try { ws.Dispose(); } catch {} throw new System.Exception("cdp connect timeout"); }
+            string cmd = "{\"id\":1,\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":" + JsonString(expression) + ",\"returnByValue\":true}}";
+            byte[] outb = System.Text.Encoding.UTF8.GetBytes(cmd);
+            ws.SendAsync(new System.ArraySegment<byte>(outb), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None).Wait();
+            var ms = new System.IO.MemoryStream();
+            byte[] buf = new byte[262144];
+            bool done = false;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (!done && sw.ElapsedMilliseconds < timeoutMs) {
+                var recvTask = ws.ReceiveAsync(new System.ArraySegment<byte>(buf), System.Threading.CancellationToken.None);
+                if (!recvTask.Wait(timeoutMs)) break;
+                ms.Write(buf, 0, recvTask.Result.Count);
+                done = recvTask.Result.EndOfMessage;
+            }
+            try { ws.Dispose(); } catch {}
+            return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        }
+        static string JsonString(string raw) {
+            var sb = new System.Text.StringBuilder("\"");
+            foreach (char c in raw) {
+                if (c == '\"') sb.Append("\\\"");
+                else if (c == '\\') sb.Append("\\\\");
+                else if (c == '\n') sb.Append("\\n");
+                else if (c == '\r') sb.Append("\\r");
+                else if (c == '\t') sb.Append("\\t");
+                else if (c < 32) sb.Append("\\u" + ((int)c).ToString("x4"));
+                else sb.Append(c);
+            }
+            sb.Append("\"");
+            return sb.ToString();
+        }
+    }
 }
 "@
 
@@ -353,6 +394,79 @@ function Get-UiaHierarchy() {
     return @{ ok = $true; count = $elements.Count; elements = @($elements) }
 }
 
+# ----------------------------------------------------------- CDP extraction
+# Reads the FULL unvirtualized interactive-element set of the active browser
+# tab through the DevTools protocol. UIA only exposes what Chromium chooses
+# to materialize; this is the complete actionable DOM with viewport coords.
+# Requires the browser running with --remote-debugging-port (pinned: 9333).
+
+$script:CdpExtractJs = @'
+(function(){
+  var out = [];
+  var sel = 'a,button,input,select,textarea,summary,[role="button"],[role="link"],[role="textbox"],[role="checkbox"],[role="tab"],[role="menuitem"],[role="option"],[onclick]';
+  var nodes = document.querySelectorAll(sel);
+  var vw = window.innerWidth, vh = window.innerHeight;
+  for (var i = 0; i < nodes.length && out.length < 800; i++) {
+    var n = nodes[i];
+    var r = n.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    var name = (n.innerText || n.value || n.getAttribute('aria-label') || n.getAttribute('title') || n.getAttribute('alt') || n.getAttribute('placeholder') || '').trim().slice(0, 200);
+    var tag = n.tagName.toLowerCase();
+    var role = n.getAttribute('role') || ({a:'Hyperlink',button:'Button',input:'Edit',select:'ComboBox',textarea:'Edit',summary:'Button'})[tag] || tag;
+    if (tag === 'input') {
+      var it = (n.getAttribute('type') || 'text').toLowerCase();
+      if (it === 'hidden') continue;
+      if (it === 'submit' || it === 'button') role = 'Button';
+      if (it === 'checkbox') role = 'CheckBox';
+      if (!name && it === 'submit') name = (n.value || 'submit').slice(0, 200);
+    }
+    out.push({
+      name: name, role: role, tag: tag,
+      x: Math.round(r.x), y: Math.round(r.y),
+      w: Math.round(r.width), h: Math.round(r.height),
+      cx: Math.round(r.x + r.width / 2), cy: Math.round(r.y + r.height / 2),
+      inView: (r.top < vh && r.bottom > 0),
+      href: n.href ? String(n.href).slice(0, 160) : ''
+    });
+  }
+  return JSON.stringify({url: String(location.href).slice(0,160), title: String(document.title).slice(0,120), count: out.length, elements: out});
+})()
+'@
+
+function Get-CdpTargets([int]$port) {
+    try {
+        return Invoke-RestMethod -Uri "http://127.0.0.1:$port/json/list" -TimeoutSec 4 -ErrorAction Stop
+    } catch { return $null }
+}
+
+function Get-CdpElements([int]$port) {
+    # returns @{ ok, count, elements[], url, title, port } or @{ ok=$false }
+    $targets = Get-CdpTargets $port
+    if (-not $targets) { return @{ ok = $false; error = "no cdp target on :$port" } }
+    $page = $targets | Where-Object { $_.type -eq "page" -and $_.url -notmatch "^devtools" } | Select-Object -First 1
+    if (-not $page) { return @{ ok = $false; error = "no page target" } }
+    try {
+        $raw = [W32+CDP]::Eval($page.webSocketDebuggerUrl, $script:CdpExtractJs, 9000)
+    } catch {
+        return @{ ok = $false; error = "cdp eval: $($_.Exception.Message)" }
+    }
+    try {
+        $resp = $raw | ConvertFrom-Json
+        $val = $resp.result.result.value
+        if (-not $val) { return @{ ok = $false; error = "empty eval result" } }
+        $parsed = $val | ConvertFrom-Json
+        return @{
+            ok = $true
+            count = $parsed.count
+            elements = $parsed.elements
+            url = $parsed.url
+            title = $parsed.title
+        }
+    } catch {
+        return @{ ok = $false; error = "cdp parse: $($_.Exception.Message)" }
+    }
+}
+
 function Invoke-ShellCmd([string]$cmd, [int]$timeoutS) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "powershell.exe"
@@ -438,6 +552,46 @@ while ($true) {
             "^/hierarchy$" {
                 $t0 = Get-Date
                 $h = Get-UiaHierarchy
+                # CDP merge: browser tabs expose their full unvirtualized DOM
+                # through the devtools protocol (when run with the debug port).
+                # Coordinates arrive viewport-relative; translate to screen
+                # using the browser Document element's UIA bounding origin.
+                try {
+                    $cdp = Get-CdpElements 9333
+                    if ($cdp.ok -and $cdp.elements) {
+                        $doc = $null
+                        foreach ($e in $h.elements) {
+                            if ($e.role -eq "Document") { $doc = $e; break }
+                        }
+                        $ox = 0; $oy = 0
+                        if ($doc) { $ox = $doc.x; $oy = $doc.y }
+                        foreach ($ce in $cdp.elements) {
+                            $h.elements += @{
+                                id = $h.elements.Count
+                                name = [string]$ce.name
+                                role = [string]$ce.role
+                                x = [int]($ce.x + $ox)
+                                y = [int]($ce.y + $oy)
+                                w = [int]$ce.w
+                                h = [int]$ce.h
+                                cx = [int]($ce.cx + $ox)
+                                cy = [int]($ce.cy + $oy)
+                                enabled = $true
+                                depth = 0
+                                source = "cdp"
+                                href = [string]$ce.href
+                                inView = [bool]$ce.inView
+                            }
+                        }
+                        foreach ($e in $h.elements) { if (-not $e.ContainsKey("source")) { $e.source = "uia" } }
+                        $h["cdp"] = @{ ok = $true; count = $cdp.count; url = $cdp.url; title = $cdp.title; originX = $ox; originY = $oy }
+                    } else {
+                        $h["cdp"] = @{ ok = $false; error = $cdp.error }
+                    }
+                } catch {
+                    $h["cdp"] = @{ ok = $false; error = $_.Exception.Message }
+                }
+                $h.count = $h.elements.Count
                 $h["elapsed_ms"] = [int]((Get-Date) - $t0).TotalMilliseconds
                 Send-JsonResponse $stream 200 $h
             }
